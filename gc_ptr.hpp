@@ -2,50 +2,56 @@
 // Created by redra on 31.07.19.
 //
 
-#ifndef NOMOREGARBADGECOLLECTOR_GV_PTR_HPP
-#define NOMOREGARBADGECOLLECTOR_GC_PTR_HPP
+#ifndef DETERMINISTIC_GARBAGE_COLLECTOR_POINTER_HPP
+#define DETERMINISTIC_GARBAGE_COLLECTOR_POINTER_HPP
 
-#include <iostream>
 #include <atomic>
 #include <vector>
-#include <unordered_map>
 #include <unordered_set>
-#include <deque>
 #include <mutex>
-#include <algorithm>
 #include <type_traits>
 #include <thread>
 
 namespace icc::memory {
 
-template <typename T>
-class has_connect_to_root
-{
-  typedef char one;
-  struct two { char x[2]; };
+namespace synchronization {
 
-  template <typename C> static one test( typeof(&C::connectToRoot) ) ;
-  template <typename C> static two test(...);
-
+class SpinLock {
  public:
-  enum { value = sizeof(test<T>(0)) == sizeof(char) };
+  SpinLock(std::atomic_flag & lockObject)
+      : lock_object_{lockObject} {
+    while (lock_object_.test_and_set(std::memory_order_acquire));
+  }
+
+  ~SpinLock() {
+    lock_object_.clear(std::memory_order_release);
+  }
+
+ private:
+  std::atomic_flag & lock_object_;
 };
 
+}
+
 template <typename T>
-class has_disconnect_from_root
+class has_use_gc_ptr
 {
   typedef char one;
   struct two { char x[2]; };
 
-  template <typename C> static one test( typeof(&C::disconnectFromRoot) ) ;
-  template <typename C> static two test(...);
+  template <typename C> static one testConnectToRoot( typeof(&C::connectToRoot) ) ;
+  template <typename C> static two testConnectToRoot(...);
+
+  template <typename C> static one testDisconnectFromRoot( typeof(&C::disconnectFromRoot) ) ;
+  template <typename C> static two testDisconnectFromRoot(...);
 
  public:
-  enum { value = sizeof(test<T>(0)) == sizeof(char) };
+  enum { value = sizeof(testConnectToRoot<T>(0)) == sizeof(char) &&
+                 sizeof(testDisconnectFromRoot<T>(0)) == sizeof(char)};
 };
 
 struct gc_object_control_block {
-  std::atomic_bool lock_{true};
+  std::atomic_flag lock_object_ = ATOMIC_FLAG_INIT;
   std::unordered_set<void *> root_ptrs_;
 };
 
@@ -160,13 +166,17 @@ class gc_ptr {
   }
 
   void connectRootPtr(void * rootPtr) const {
-    if (object_control_block_ptr_ != nullptr && object_control_block_ptr_->lock_) {
-      object_control_block_ptr_->lock_ = false;
-      if constexpr (has_connect_to_root<TObject>::value) {
+    if (object_control_block_ptr_ != nullptr &&
+        visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {
+      visited_objects.insert(object_control_block_ptr_);
+      if constexpr (has_use_gc_ptr<TObject>::value) {
         object_ptr_->connectToRoot(rootPtr);
       }
-      object_control_block_ptr_->root_ptrs_.emplace(rootPtr);
-      object_control_block_ptr_->lock_ = true;
+      {
+        synchronization::SpinLock lock{object_control_block_ptr_->lock_object_};
+        object_control_block_ptr_->root_ptrs_.emplace(rootPtr);
+      }
+      visited_objects.erase(object_control_block_ptr_);
     }
   }
 
@@ -176,27 +186,33 @@ class gc_ptr {
   }
 
   void removeRootPtr(void * rootPtr) {
-    if (object_control_block_ptr_ != nullptr && object_control_block_ptr_->lock_) {
-      object_control_block_ptr_->lock_ = false;
-      if constexpr (has_disconnect_from_root<TObject>::value) {
+    if (object_control_block_ptr_ != nullptr &&
+        visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {
+      visited_objects.insert(object_control_block_ptr_);
+      if constexpr (has_use_gc_ptr<TObject>::value) {
         object_ptr_->disconnectFromRoot(rootPtr);
       }
-      object_control_block_ptr_->root_ptrs_.erase(rootPtr);
-      object_control_block_ptr_->lock_ = true;
-      if (object_control_block_ptr_->root_ptrs_.empty()) {
-        if (is_aligned_memory_) {
-          auto gcObjectAlignedStoragePtr = reinterpret_cast<gc_object_aligned_storage<TObject>*>(object_ptr_);
-          delete gcObjectAlignedStoragePtr;
-        } else {
-          is_aligned_memory_ = false;
-          delete object_ptr_;
-          delete object_control_block_ptr_;
+      {
+        synchronization::SpinLock lock{object_control_block_ptr_->lock_object_};
+        object_control_block_ptr_->root_ptrs_.erase(rootPtr);
+        visited_objects.erase(object_control_block_ptr_);
+        if (object_control_block_ptr_->root_ptrs_.empty()) {
+          if (is_aligned_memory_) {
+            auto gcObjectAlignedStoragePtr = reinterpret_cast<gc_object_aligned_storage<TObject>*>(object_ptr_);
+            delete gcObjectAlignedStoragePtr;
+          } else {
+            is_aligned_memory_ = false;
+            delete object_ptr_;
+            delete object_control_block_ptr_;
+          }
         }
       }
     }
   }
 
  protected:
+  static inline thread_local std::unordered_set<void *> visited_objects;
+
   std::unordered_set<void *> root_ptrs_;
 
   bool is_aligned_memory_ = false;
@@ -223,4 +239,4 @@ class root_gc_ptr : public gc_ptr<TObject> {
 
 }
 
-#endif //NOMOREGARBADGECOLLECTOR_GV_PTR_HPP
+#endif  //DETERMINISTIC_GARBAGE_COLLECTOR_POINTER_HPP
