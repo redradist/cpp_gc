@@ -1,6 +1,11 @@
-//
-// Created by redra on 31.07.19.
-//
+/**
+ * @file gc_ptr.hpp
+ * @author Denis Kotov
+ * @date 31 Jul 2019
+ * @brief Contains gc_ptr class.
+ * It is thread safe Deterministic Garbage Pointer Collector
+ * @copyright Denis Kotov, MIT License. Open source: https://github.com/redradist/DeterministicGarbagePointer/blob/master/gc_ptr.hpp
+ */
 
 #ifndef DETERMINISTIC_GARBAGE_COLLECTOR_POINTER_HPP
 #define DETERMINISTIC_GARBAGE_COLLECTOR_POINTER_HPP
