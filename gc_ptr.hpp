@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <thread>
 
-namespace icc::memory {
+namespace gc::memory {
 
 namespace synchronization {
 
@@ -104,11 +104,11 @@ class gc_ptr {
     }
   }
 
-  explicit operator bool() const {
+  explicit operator bool() const noexcept {
     return object_ptr_ != nullptr;
   }
 
-  TObject * operator->() const {
+  TObject * operator->() const noexcept {
     return object_ptr_;
   }
 
@@ -142,7 +142,7 @@ class gc_ptr {
     return *this;
   }
 
-  gc_ptr & operator=(gc_ptr && objectPtr) noexcept {
+  gc_ptr & operator=(gc_ptr && objectPtr) {
     if (object_control_block_ptr_ != nullptr) {
       for (auto & rootRefPtr : root_ptrs_) {
         removeRootPtr(rootRefPtr);
