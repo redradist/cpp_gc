@@ -99,7 +99,7 @@ int main() {
     thr = std::thread {
       [a_copy_ptr_]() {
         std::this_thread::sleep_for(std::chrono::seconds(10));
-        std::cout << "Object name " << a_copy_ptr_->getName();
+        std::cout << "Object name " << a_copy_ptr_->getName() << std::endl;
       }
     };
 

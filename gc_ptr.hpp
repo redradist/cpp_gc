@@ -159,9 +159,18 @@ class gc_ptr {
     objectPtr.is_aligned_memory_ = false;
     objectPtr.object_ptr_ = nullptr;
     objectPtr.object_control_block_ptr_ = nullptr;
+
+    auto oldRootPtrs = objectPtr.root_ptrs_;
     for (auto & rootRefPtr : root_ptrs_) {
+      if (oldRootPtrs.count(rootRefPtr)) {
+        oldRootPtrs.erase(rootRefPtr);
+      }
       connectRootPtr(rootRefPtr);
     }
+    for (auto & rootRefPtr : oldRootPtrs) {
+      removeRootPtr(rootRefPtr);
+    }
+
     return *this;
   }
 
@@ -170,6 +179,12 @@ class gc_ptr {
     connectRootPtr(rootPtr);
   }
 
+  void disconnectFromRoot(void * rootPtr) {
+    root_ptrs_.erase(rootPtr);
+    removeRootPtr(rootPtr);
+  }
+
+ protected:
   void connectRootPtr(void * rootPtr) const {
     if (object_control_block_ptr_ != nullptr &&
         visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {
@@ -183,11 +198,6 @@ class gc_ptr {
       }
       visited_objects.erase(object_control_block_ptr_);
     }
-  }
-
-  void disconnectFromRoot(void * rootPtr) {
-    root_ptrs_.erase(rootPtr);
-    removeRootPtr(rootPtr);
   }
 
   void removeRootPtr(void * rootPtr) {
@@ -215,7 +225,6 @@ class gc_ptr {
     }
   }
 
- protected:
   static inline thread_local std::unordered_set<void *> visited_objects;
 
   std::unordered_set<void *> root_ptrs_;
@@ -238,6 +247,38 @@ class root_gc_ptr : public gc_ptr<TObject> {
     this->object_control_block_ptr_ = new gc_object_control_block{};
     for (auto & rootRefPtr : this->root_ptrs_) {
       this->connectRootPtr(rootRefPtr);
+    }
+  }
+
+  root_gc_ptr(const root_gc_ptr & gcPtr) {
+    this->root_ptrs_.insert(this);
+    this->operator=(gcPtr);
+  }
+
+  root_gc_ptr(root_gc_ptr && gcPtr) {
+    this->root_ptrs_.insert(this);
+    this->operator=(std::move(gcPtr));
+  }
+
+  root_gc_ptr & operator=(const root_gc_ptr & objectPtr) = default;
+
+  root_gc_ptr & operator=(root_gc_ptr && objectPtr) = default;
+};
+
+template <typename TObject>
+class root_gc_obj : public TObject {
+ public:
+  template <typename ... TArgs>
+  root_gc_obj(TArgs && ... args)
+      : TObject{args...} {
+    if constexpr (has_use_gc_ptr<TObject>::value) {
+      this->connectToRoot(this);
+    }
+  }
+
+  ~root_gc_obj() {
+    if constexpr (has_use_gc_ptr<TObject>::value) {
+      this->disconnectFromRoot(this);
     }
   }
 };
