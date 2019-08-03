@@ -14,11 +14,11 @@ class A;
 class C {
  public:
   C() {
-     std::cout << "C()[this=" << this << "]" << std::endl;
+     std::cout << "C()" << std::endl;
   }
 
   ~C() {
-     std::cout << "~C()[this=" << this << "]" << std::endl;
+     std::cout << "~C()" << std::endl;
   }
 
   void connectToRoot(void * rootPtr) {
@@ -39,12 +39,13 @@ class C {
 class B {
  public:
   B() {
-     std::cout << "B()[this=" << this << "]" << std::endl;
+    std::cout << "B()" << std::endl;
     c_ptr_ = memory::gc_ptr<C>{new C()};
+    c_ptr_.create_object();
   }
 
   ~B() {
-     std::cout << "~B()[this=" << this << "]" << std::endl;
+    std::cout << "~B()" << std::endl;
   }
 
   void connectToRoot(void * rootPtr) {
@@ -62,12 +63,12 @@ class B {
 class A {
  public:
   A() {
-     std::cout << "A()[this=" << this << "]" << std::endl;
+    std::cout << "A()" << std::endl;
     b_ptr_.create_object();
   }
 
   ~A() {
-     std::cout << "~A()[this=" << this << "]" << std::endl;
+    std::cout << "~A()" << std::endl;
   }
 
   void connectToRoot(void * rootPtr) {
@@ -95,14 +96,10 @@ int main() {
     a_copy_ptr_.create_object();
     a_copy_ptr_ = a0_ptr_;
 
-    std::function<void(void)> asdsd;
-    asdsd = [=]() {
+    thr = std::thread {[a0_ptr_]() {
       std::this_thread::sleep_for(std::chrono::seconds(2));
-//      // std::cout << "Object name " << a0_ptr_->getName() << std::endl;
-    };
-    thr = std::thread {
-        asdsd
-    };
+      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
+    }};
     memory::gc_ptr<A> a1_ptr_{};
     a1_ptr_.create_object();
     a1_ptr_->b_ptr_ = a0_ptr_->b_ptr_;

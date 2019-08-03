@@ -77,7 +77,7 @@ class gc_ptr {
   explicit gc_ptr(TObject * objectPtr)
     : root_ptrs_{this} {
     object_ptr_ = objectPtr;
-    object_control_block_ptr_ = new gc_object_control_block{};
+    object_control_block_ptr_ = new gc_object_control_block{false, ATOMIC_FLAG_INIT, {}};
     for (auto & rootRefPtr : this->root_ptrs_) {
       addRootPtr(rootRefPtr);
     }
@@ -98,6 +98,11 @@ class gc_ptr {
 
   template <typename ... TArgs>
   void create_object(TArgs && ... args) {
+    if (object_control_block_ptr_ != nullptr) {
+      for (auto & rootRefPtr : root_ptrs_) {
+        removeRootPtr(rootRefPtr);
+      }
+    }
     auto gcObjectAlignedStoragePtr = new gc_object_aligned_storage<TObject>{
         {std::forward<TObject>(args)...},
         {true, ATOMIC_FLAG_INIT, {}}
@@ -183,21 +188,23 @@ class gc_ptr {
       if constexpr (has_use_gc_ptr<TObject>::value) {
         object_ptr_->disconnectFromRoot(rootPtr);
       }
+      bool isNoRoots;
       {
         synchronization::SpinLock lock{object_control_block_ptr_->lock_object_};
         object_control_block_ptr_->root_ptrs_.erase(rootPtr);
-        visited_objects.erase(object_control_block_ptr_);
-        if (object_control_block_ptr_->root_ptrs_.empty()) {
-          if (object_control_block_ptr_->is_aligned_memory_) {
-            auto gcObjectAlignedStoragePtr = reinterpret_cast<gc_object_aligned_storage<TObject>*>(object_ptr_);
-            delete gcObjectAlignedStoragePtr;
-          } else {
-            delete object_ptr_;
-            delete object_control_block_ptr_;
-          }
-          object_ptr_ = nullptr;
-          object_control_block_ptr_ = nullptr;
+        isNoRoots = object_control_block_ptr_->root_ptrs_.empty();
+      }
+      visited_objects.erase(object_control_block_ptr_);
+      if (isNoRoots) {
+        if (object_control_block_ptr_->is_aligned_memory_) {
+          auto gcObjectAlignedStoragePtr = reinterpret_cast<gc_object_aligned_storage<TObject>*>(object_ptr_);
+          delete gcObjectAlignedStoragePtr;
+        } else {
+          delete object_ptr_;
+          delete object_control_block_ptr_;
         }
+        object_ptr_ = nullptr;
+        object_control_block_ptr_ = nullptr;
       }
     }
   }
