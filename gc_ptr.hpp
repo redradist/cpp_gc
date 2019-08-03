@@ -79,7 +79,7 @@ class gc_ptr {
     object_ptr_ = objectPtr;
     object_control_block_ptr_ = new gc_object_control_block{false, ATOMIC_FLAG_INIT, {}};
     for (auto & rootRefPtr : this->root_ptrs_) {
-      addRootPtr(rootRefPtr);
+      addRootPtrToObject(rootRefPtr);
     }
   }
 
@@ -91,7 +91,7 @@ class gc_ptr {
   ~gc_ptr() {
     if (object_control_block_ptr_ != nullptr) {
       for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtr(rootRefPtr);
+        removeRootPtrFromObject(rootRefPtr);
       }
     }
   }
@@ -100,7 +100,7 @@ class gc_ptr {
   void create_object(TArgs && ... args) {
     if (object_control_block_ptr_ != nullptr) {
       for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtr(rootRefPtr);
+        removeRootPtrFromObject(rootRefPtr);
       }
     }
     auto gcObjectAlignedStoragePtr = new gc_object_aligned_storage<TObject>{
@@ -110,7 +110,7 @@ class gc_ptr {
     object_ptr_ = &gcObjectAlignedStoragePtr->object_;
     object_control_block_ptr_ = &gcObjectAlignedStoragePtr->control_block_;
     for (auto & rootRefPtr : root_ptrs_) {
-      addRootPtr(rootRefPtr);
+      addRootPtrToObject(rootRefPtr);
     }
   }
 
@@ -125,13 +125,13 @@ class gc_ptr {
   gc_ptr & operator=(const TObject * objectPtr) {
     if (object_control_block_ptr_ != nullptr) {
       for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtr(rootRefPtr);
+        removeRootPtrFromObject(rootRefPtr);
       }
     }
     object_ptr_ = objectPtr;
     object_control_block_ptr_ = new gc_object_control_block{};
     for (auto & rootRefPtr : root_ptrs_) {
-      addRootPtr(rootRefPtr);
+      addRootPtrToObject(rootRefPtr);
     }
     return *this;
   }
@@ -139,20 +139,20 @@ class gc_ptr {
   gc_ptr & operator=(const gc_ptr & objectPtr) {
     if (object_control_block_ptr_ != nullptr) {
       for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtr(rootRefPtr);
+        removeRootPtrFromObject(rootRefPtr);
       }
     }
     object_ptr_ = objectPtr.object_ptr_;
     object_control_block_ptr_ = objectPtr.object_control_block_ptr_;
     for (auto & rootRefPtr : root_ptrs_) {
-      addRootPtr(rootRefPtr);
+      addRootPtrToObject(rootRefPtr);
     }
     return *this;
   }
 
   void connectToRoot(void * rootPtr) {
     root_ptrs_.insert(rootPtr);
-    addRootPtr(rootPtr);
+    addRootPtrToObject(rootPtr);
     if (is_initial_root_) {
       is_initial_root_ = false;
       root_ptrs_.erase(this);
@@ -162,11 +162,11 @@ class gc_ptr {
 
   void disconnectFromRoot(void * rootPtr) {
     root_ptrs_.erase(rootPtr);
-    removeRootPtr(rootPtr);
+    removeRootPtrFromObject(rootPtr);
   }
 
  protected:
-  void addRootPtr(void *rootPtr) const {
+  void addRootPtrToObject(void *rootPtr) const {
     if (object_control_block_ptr_ != nullptr &&
         visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {
       visited_objects.insert(object_control_block_ptr_);
@@ -181,7 +181,7 @@ class gc_ptr {
     }
   }
 
-  void removeRootPtr(void * rootPtr) {
+  void removeRootPtrFromObject(void *rootPtr) {
     if (object_control_block_ptr_ != nullptr &&
         visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {
       visited_objects.insert(object_control_block_ptr_);
