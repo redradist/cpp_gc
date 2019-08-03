@@ -17,7 +17,7 @@
 #include <type_traits>
 #include <thread>
 
-namespace gc::memory {
+namespace memory {
 
 namespace synchronization {
 
@@ -56,6 +56,7 @@ class has_use_gc_ptr
 };
 
 struct gc_object_control_block {
+  const bool is_aligned_memory_ = false;
   std::atomic_flag lock_object_ = ATOMIC_FLAG_INIT;
   std::unordered_set<void *> root_ptrs_;
 };
@@ -69,22 +70,22 @@ struct gc_object_aligned_storage {
 template <typename TObject>
 class gc_ptr {
  public:
-  gc_ptr() = default;
+  gc_ptr()
+    : root_ptrs_{this} {
+  }
 
-  explicit gc_ptr(TObject * objectPtr) {
+  explicit gc_ptr(TObject * objectPtr)
+    : root_ptrs_{this} {
     object_ptr_ = objectPtr;
     object_control_block_ptr_ = new gc_object_control_block{};
     for (auto & rootRefPtr : this->root_ptrs_) {
-      connectRootPtr(rootRefPtr);
+      addRootPtr(rootRefPtr);
     }
   }
 
-  gc_ptr(const gc_ptr & gcPtr) {
+  gc_ptr(const gc_ptr & gcPtr)
+    : root_ptrs_{this} {
     this->operator=(gcPtr);
-  }
-
-  gc_ptr(gc_ptr && gcPtr) {
-    this->operator=(std::move(gcPtr));
   }
 
   ~gc_ptr() {
@@ -99,13 +100,12 @@ class gc_ptr {
   void create_object(TArgs && ... args) {
     auto gcObjectAlignedStoragePtr = new gc_object_aligned_storage<TObject>{
         {std::forward<TObject>(args)...},
-        {}
+        {true, ATOMIC_FLAG_INIT, {}}
     };
-    is_aligned_memory_ = true;
     object_ptr_ = &gcObjectAlignedStoragePtr->object_;
     object_control_block_ptr_ = &gcObjectAlignedStoragePtr->control_block_;
     for (auto & rootRefPtr : root_ptrs_) {
-      connectRootPtr(rootRefPtr);
+      addRootPtr(rootRefPtr);
     }
   }
 
@@ -123,11 +123,10 @@ class gc_ptr {
         removeRootPtr(rootRefPtr);
       }
     }
-    is_aligned_memory_ = false;
     object_ptr_ = objectPtr;
     object_control_block_ptr_ = new gc_object_control_block{};
     for (auto & rootRefPtr : root_ptrs_) {
-      connectRootPtr(rootRefPtr);
+      addRootPtr(rootRefPtr);
     }
     return *this;
   }
@@ -138,45 +137,22 @@ class gc_ptr {
         removeRootPtr(rootRefPtr);
       }
     }
-    is_aligned_memory_ = objectPtr.is_aligned_memory_;
     object_ptr_ = objectPtr.object_ptr_;
     object_control_block_ptr_ = objectPtr.object_control_block_ptr_;
     for (auto & rootRefPtr : root_ptrs_) {
-      connectRootPtr(rootRefPtr);
+      addRootPtr(rootRefPtr);
     }
-    return *this;
-  }
-
-  gc_ptr & operator=(gc_ptr && objectPtr) {
-    if (object_control_block_ptr_ != nullptr) {
-      for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtr(rootRefPtr);
-      }
-    }
-    is_aligned_memory_ = objectPtr.is_aligned_memory_;
-    object_ptr_ = objectPtr.object_ptr_;
-    object_control_block_ptr_ = objectPtr.object_control_block_ptr_;
-    objectPtr.is_aligned_memory_ = false;
-    objectPtr.object_ptr_ = nullptr;
-    objectPtr.object_control_block_ptr_ = nullptr;
-
-    auto oldRootPtrs = objectPtr.root_ptrs_;
-    for (auto & rootRefPtr : root_ptrs_) {
-      if (oldRootPtrs.count(rootRefPtr)) {
-        oldRootPtrs.erase(rootRefPtr);
-      }
-      connectRootPtr(rootRefPtr);
-    }
-    for (auto & rootRefPtr : oldRootPtrs) {
-      removeRootPtr(rootRefPtr);
-    }
-
     return *this;
   }
 
   void connectToRoot(void * rootPtr) {
     root_ptrs_.insert(rootPtr);
-    connectRootPtr(rootPtr);
+    addRootPtr(rootPtr);
+    if (is_initial_root_) {
+      is_initial_root_ = false;
+      root_ptrs_.erase(this);
+      disconnectFromRoot(this);
+    }
   }
 
   void disconnectFromRoot(void * rootPtr) {
@@ -185,7 +161,7 @@ class gc_ptr {
   }
 
  protected:
-  void connectRootPtr(void * rootPtr) const {
+  void addRootPtr(void *rootPtr) const {
     if (object_control_block_ptr_ != nullptr &&
         visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {
       visited_objects.insert(object_control_block_ptr_);
@@ -212,14 +188,15 @@ class gc_ptr {
         object_control_block_ptr_->root_ptrs_.erase(rootPtr);
         visited_objects.erase(object_control_block_ptr_);
         if (object_control_block_ptr_->root_ptrs_.empty()) {
-          if (is_aligned_memory_) {
+          if (object_control_block_ptr_->is_aligned_memory_) {
             auto gcObjectAlignedStoragePtr = reinterpret_cast<gc_object_aligned_storage<TObject>*>(object_ptr_);
             delete gcObjectAlignedStoragePtr;
           } else {
-            is_aligned_memory_ = false;
             delete object_ptr_;
             delete object_control_block_ptr_;
           }
+          object_ptr_ = nullptr;
+          object_control_block_ptr_ = nullptr;
         }
       }
     }
@@ -229,58 +206,9 @@ class gc_ptr {
 
   std::unordered_set<void *> root_ptrs_;
 
-  bool is_aligned_memory_ = false;
+  bool is_initial_root_ = true;
   TObject * object_ptr_ = nullptr;
   gc_object_control_block * object_control_block_ptr_ = nullptr;
-};
-
-template <typename TObject>
-class root_gc_ptr : public gc_ptr<TObject> {
- public:
-  root_gc_ptr() {
-    this->root_ptrs_.insert(this);
-  }
-
-  root_gc_ptr(TObject * objectPtr) {
-    this->root_ptrs_.insert(this);
-    this->object_ptr_ = objectPtr;
-    this->object_control_block_ptr_ = new gc_object_control_block{};
-    for (auto & rootRefPtr : this->root_ptrs_) {
-      this->connectRootPtr(rootRefPtr);
-    }
-  }
-
-  root_gc_ptr(const root_gc_ptr & gcPtr) {
-    this->root_ptrs_.insert(this);
-    this->operator=(gcPtr);
-  }
-
-  root_gc_ptr(root_gc_ptr && gcPtr) {
-    this->root_ptrs_.insert(this);
-    this->operator=(std::move(gcPtr));
-  }
-
-  root_gc_ptr & operator=(const root_gc_ptr & objectPtr) = default;
-
-  root_gc_ptr & operator=(root_gc_ptr && objectPtr) = default;
-};
-
-template <typename TObject>
-class root_gc_obj : public TObject {
- public:
-  template <typename ... TArgs>
-  root_gc_obj(TArgs && ... args)
-      : TObject{args...} {
-    if constexpr (has_use_gc_ptr<TObject>::value) {
-      this->connectToRoot(this);
-    }
-  }
-
-  ~root_gc_obj() {
-    if constexpr (has_use_gc_ptr<TObject>::value) {
-      this->disconnectFromRoot(this);
-    }
-  }
 };
 
 }

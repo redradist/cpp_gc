@@ -7,17 +7,18 @@
 #include <mutex>
 #include <algorithm>
 #include <gc_ptr.hpp>
+#include <functional>
 
 class A;
 
 class C {
  public:
   C() {
-    std::cout << "C()" << std::endl;
+     std::cout << "C()[this=" << this << "]" << std::endl;
   }
 
   ~C() {
-    std::cout << "~C()" << std::endl;
+     std::cout << "~C()[this=" << this << "]" << std::endl;
   }
 
   void connectToRoot(void * rootPtr) {
@@ -30,20 +31,20 @@ class C {
     a1_ptr_.disconnectFromRoot(rootPtr);
   }
 
-  gc::memory::gc_ptr<A> a0_ptr_;
-  gc::memory::gc_ptr<A> a1_ptr_;
+  memory::gc_ptr<A> a0_ptr_;
+  memory::gc_ptr<A> a1_ptr_;
   std::vector<int> array;
 };
 
 class B {
  public:
   B() {
-    c_ptr_.create_object();
-    std::cout << "B()" << std::endl;
+     std::cout << "B()[this=" << this << "]" << std::endl;
+    c_ptr_ = memory::gc_ptr<C>{new C()};
   }
 
   ~B() {
-    std::cout << "~B()" << std::endl;
+     std::cout << "~B()[this=" << this << "]" << std::endl;
   }
 
   void connectToRoot(void * rootPtr) {
@@ -54,19 +55,19 @@ class B {
     c_ptr_.disconnectFromRoot(rootPtr);
   }
 
-  gc::memory::gc_ptr<C> c_ptr_;
+  memory::gc_ptr<C> c_ptr_;
   std::vector<int> array;
 };
 
 class A {
  public:
   A() {
+     std::cout << "A()[this=" << this << "]" << std::endl;
     b_ptr_.create_object();
-    std::cout << "A()" << std::endl;
   }
 
   ~A() {
-    std::cout << "~A()" << std::endl;
+     std::cout << "~A()[this=" << this << "]" << std::endl;
   }
 
   void connectToRoot(void * rootPtr) {
@@ -81,31 +82,29 @@ class A {
     return "class A";
   }
 
-  gc::memory::gc_ptr<B> b_ptr_;
+  memory::gc_ptr<B> b_ptr_;
 };
 
 int main() {
   std::thread thr;
   {
-//    root_gc_ptr<A> a0_ptr_{};
-//    a0_ptr_.create_object();
-    gc::memory::root_gc_ptr<A> a0_ptr_{new A()};
+    memory::gc_ptr<A> a0_ptr_{new A()};
     a0_ptr_->b_ptr_->c_ptr_->a1_ptr_ = a0_ptr_;
 
-    gc::memory::root_gc_ptr<A> a_copy_ptr_{};
+    memory::gc_ptr<A> a_copy_ptr_{};
     a_copy_ptr_.create_object();
     a_copy_ptr_ = a0_ptr_;
 
-    thr = std::thread {
-      [a_copy_ptr_]() {
-        std::this_thread::sleep_for(std::chrono::seconds(10));
-        std::cout << "Object name " << a_copy_ptr_->getName() << std::endl;
-      }
+    std::function<void(void)> asdsd;
+    asdsd = [=]() {
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+//      // std::cout << "Object name " << a0_ptr_->getName() << std::endl;
     };
-
-    gc::memory::root_gc_ptr<A> a1_ptr_{};
+    thr = std::thread {
+        asdsd
+    };
+    memory::gc_ptr<A> a1_ptr_{};
     a1_ptr_.create_object();
-//    gc::memory::root_gc_ptr<A> a1_ptr_{new A()};
     a1_ptr_->b_ptr_ = a0_ptr_->b_ptr_;
     a1_ptr_->b_ptr_->c_ptr_->a0_ptr_  = a1_ptr_;
   }
