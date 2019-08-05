@@ -89,33 +89,27 @@ class gc_ptr {
   }
 
   ~gc_ptr() {
-    if (object_control_block_ptr_ != nullptr) {
-      for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtrFromObject(rootRefPtr);
-      }
-    }
+    removeAllRoots();
   }
 
   template <typename ... TArgs>
   void create_object(TArgs && ... args) {
-    if (object_control_block_ptr_ != nullptr) {
-      for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtrFromObject(rootRefPtr);
-      }
-    }
+    removeAllRoots();
     auto gcObjectAlignedStoragePtr = new gc_object_aligned_storage<TObject>{
         {std::forward<TObject>(args)...},
         {true, ATOMIC_FLAG_INIT, {}}
     };
     object_ptr_ = &gcObjectAlignedStoragePtr->object_;
     object_control_block_ptr_ = &gcObjectAlignedStoragePtr->control_block_;
-    for (auto & rootRefPtr : root_ptrs_) {
-      addRootPtrToObject(rootRefPtr);
-    }
+    addAllRoots();
   }
 
   explicit operator bool() const noexcept {
     return object_ptr_ != nullptr;
+  }
+
+  TObject & operator *() const {
+    return *object_ptr_;
   }
 
   TObject * operator->() const noexcept {
@@ -123,30 +117,22 @@ class gc_ptr {
   }
 
   gc_ptr & operator=(const TObject * objectPtr) {
-    if (object_control_block_ptr_ != nullptr) {
-      for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtrFromObject(rootRefPtr);
-      }
-    }
+    removeAllRoots();
     object_ptr_ = objectPtr;
-    object_control_block_ptr_ = new gc_object_control_block{};
-    for (auto & rootRefPtr : root_ptrs_) {
-      addRootPtrToObject(rootRefPtr);
+    if (object_ptr_ != nullptr) {
+      object_control_block_ptr_ = new gc_object_control_block{};
+    } else {
+      object_control_block_ptr_ = nullptr;
     }
+    addAllRoots();
     return *this;
   }
 
   gc_ptr & operator=(const gc_ptr & objectPtr) {
-    if (object_control_block_ptr_ != nullptr) {
-      for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtrFromObject(rootRefPtr);
-      }
-    }
+    removeAllRoots();
     object_ptr_ = objectPtr.object_ptr_;
     object_control_block_ptr_ = objectPtr.object_control_block_ptr_;
-    for (auto & rootRefPtr : root_ptrs_) {
-      addRootPtrToObject(rootRefPtr);
-    }
+    addAllRoots();
     return *this;
   }
 
@@ -166,6 +152,22 @@ class gc_ptr {
   }
 
  protected:
+  void addAllRoots() {
+    if (object_control_block_ptr_ != nullptr) {
+      for (auto &rootRefPtr : root_ptrs_) {
+        addRootPtrToObject(rootRefPtr);
+      }
+    }
+  }
+
+  void removeAllRoots() {
+    if (object_control_block_ptr_ != nullptr) {
+      for (auto & rootRefPtr : root_ptrs_) {
+        removeRootPtrFromObject(rootRefPtr);
+      }
+    }
+  }
+
   void addRootPtrToObject(void *rootPtr) const {
     if (object_control_block_ptr_ != nullptr &&
         visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {

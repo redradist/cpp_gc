@@ -7,7 +7,6 @@
 #include <mutex>
 #include <algorithm>
 #include <gc_ptr.hpp>
-#include <functional>
 
 class A;
 
