@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 include_directories(..)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize-memory-track-origins=2 -fsanitize-memory-use-after-dtor -fno-omit-frame-pointer")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize-address-use-after-scope -fsanitize=leak")
 
 add_executable(NoMoreGarbadgeCollector main.cpp)
 target_link_libraries(NoMoreGarbadgeCollector pthread c++)

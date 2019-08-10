@@ -58,7 +58,7 @@ class has_use_gc_ptr
 struct gc_object_control_block {
   const bool is_aligned_memory_ = false;
   std::atomic_flag lock_object_ = ATOMIC_FLAG_INIT;
-  std::unordered_set<void *> root_ptrs_;
+  std::unordered_map<void *, uint32_t> root_ptrs_;
 };
 
 template <typename TObject>
@@ -77,7 +77,7 @@ class gc_ptr {
   explicit gc_ptr(TObject * objectPtr)
     : root_ptrs_{this} {
     object_ptr_ = objectPtr;
-    object_control_block_ptr_ = new gc_object_control_block{false, ATOMIC_FLAG_INIT, {}};
+    object_control_block_ptr_ = new gc_object_control_block{};
     for (auto & rootRefPtr : this->root_ptrs_) {
       addRootPtrToObject(rootRefPtr);
     }
@@ -139,22 +139,22 @@ class gc_ptr {
   void connectToRoot(void * rootPtr) {
     root_ptrs_.insert(rootPtr);
     addRootPtrToObject(rootPtr);
-    if (is_initial_root_) {
-      is_initial_root_ = false;
-      root_ptrs_.erase(this);
-      disconnectFromRoot(this);
+    if (is_root_) {
+      is_root_ = false;
+      disconnectFromRoot(true, this);
     }
   }
 
-  void disconnectFromRoot(void * rootPtr) {
+  void disconnectFromRoot(bool isRoot, void * rootPtr) {
     root_ptrs_.erase(rootPtr);
-    removeRootPtrFromObject(rootPtr);
+    removeRootPtrFromObject(isRoot, rootPtr);
   }
 
  protected:
   void addAllRoots() {
     if (object_control_block_ptr_ != nullptr) {
-      for (auto &rootRefPtr : root_ptrs_) {
+      auto rootPtrs = root_ptrs_;
+      for (auto &rootRefPtr : rootPtrs) {
         addRootPtrToObject(rootRefPtr);
       }
     }
@@ -162,42 +162,60 @@ class gc_ptr {
 
   void removeAllRoots() {
     if (object_control_block_ptr_ != nullptr) {
-      for (auto & rootRefPtr : root_ptrs_) {
-        removeRootPtrFromObject(rootRefPtr);
+      auto rootPtrs = root_ptrs_;
+      for (auto &rootRefPtr : rootPtrs) {
+        root_ptrs_.erase(rootRefPtr);
+        removeRootPtrFromObject(is_root_, rootRefPtr);
       }
     }
   }
 
   void addRootPtrToObject(void *rootPtr) const {
-    if (object_control_block_ptr_ != nullptr &&
-        visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {
-      visited_objects.insert(object_control_block_ptr_);
-      if constexpr (has_use_gc_ptr<TObject>::value) {
-        object_ptr_->connectToRoot(rootPtr);
-      }
+    if (object_control_block_ptr_ != nullptr) {
+      bool isNewRoot;
       {
         synchronization::SpinLock lock{object_control_block_ptr_->lock_object_};
-        object_control_block_ptr_->root_ptrs_.emplace(rootPtr);
+        isNewRoot = object_control_block_ptr_->root_ptrs_.count(rootPtr) == 0;
+        if (isNewRoot) {
+          object_control_block_ptr_->root_ptrs_[rootPtr] = 1;
+        } else {
+          object_control_block_ptr_->root_ptrs_[rootPtr] += 1;
+        }
       }
-      visited_objects.erase(object_control_block_ptr_);
+      if (isNewRoot) {
+        if constexpr (has_use_gc_ptr<TObject>::value) {
+          object_ptr_->connectToRoot(rootPtr);
+        }
+      }
     }
   }
 
-  void removeRootPtrFromObject(void *rootPtr) {
-    if (object_control_block_ptr_ != nullptr &&
-        visited_objects.end() == visited_objects.find(object_control_block_ptr_)) {
-      visited_objects.insert(object_control_block_ptr_);
-      if constexpr (has_use_gc_ptr<TObject>::value) {
-        object_ptr_->disconnectFromRoot(rootPtr);
-      }
+  void removeRootPtrFromObject(bool isRoot, void *rootPtr) {
+    if (object_control_block_ptr_ != nullptr) {
+      bool isRemovedRoot = false;
       bool isNoRoots;
       {
         synchronization::SpinLock lock{object_control_block_ptr_->lock_object_};
-        object_control_block_ptr_->root_ptrs_.erase(rootPtr);
+        if (isRoot) {
+          if (object_control_block_ptr_->root_ptrs_.count(rootPtr) > 0) {
+            object_control_block_ptr_->root_ptrs_.erase(rootPtr);
+            isRemovedRoot = true;
+          }
+        } else if (object_control_block_ptr_->root_ptrs_.count(rootPtr) > 0) {
+          object_control_block_ptr_->root_ptrs_[rootPtr] -= 1;
+          if (object_control_block_ptr_->root_ptrs_[rootPtr] == 0) {
+            object_control_block_ptr_->root_ptrs_.erase(rootPtr);
+            isRemovedRoot = true;
+          }
+        }
         isNoRoots = object_control_block_ptr_->root_ptrs_.empty();
       }
-      visited_objects.erase(object_control_block_ptr_);
-      if (isNoRoots) {
+      if (isRemovedRoot) {
+        if constexpr (has_use_gc_ptr<TObject>::value) {
+          object_ptr_->disconnectFromRoot(isRoot, rootPtr);
+        }
+      }
+      if (isRemovedRoot && isNoRoots) {
         if (object_control_block_ptr_->is_aligned_memory_) {
           auto gcObjectAlignedStoragePtr = reinterpret_cast<gc_object_aligned_storage<TObject>*>(object_ptr_);
           delete gcObjectAlignedStoragePtr;
@@ -207,15 +225,15 @@ class gc_ptr {
         }
         object_ptr_ = nullptr;
         object_control_block_ptr_ = nullptr;
+      } else if (root_ptrs_.empty()) {
+        object_ptr_ = nullptr;
+        object_control_block_ptr_ = nullptr;
       }
     }
   }
 
-  static inline thread_local std::unordered_set<void *> visited_objects;
-
+  bool is_root_ = true;
   std::unordered_set<void *> root_ptrs_;
-
-  bool is_initial_root_ = true;
   TObject * object_ptr_ = nullptr;
   gc_object_control_block * object_control_block_ptr_ = nullptr;
 };
