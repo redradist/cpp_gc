@@ -116,7 +116,7 @@ class gc_ptr {
     return object_ptr_;
   }
 
-  gc_ptr & operator=(const TObject * objectPtr) {
+  gc_ptr & operator=(TObject * const objectPtr) {
     removeAllRoots();
     object_ptr_ = objectPtr;
     if (object_ptr_ != nullptr) {

@@ -24,6 +24,7 @@ class C {
     return "class A";
   }
 
+  A * a0;
   memory::gc_ptr<A> a0_ptr_;
   memory::gc_ptr<A> a1_ptr_;
   std::vector<int> array;
@@ -36,13 +37,13 @@ class C {
   friend class memory::gc_ptr;
 
   void connectToRoot(void * rootPtr) {
-    a0_ptr_.connectToRoot(rootPtr);
     a1_ptr_.connectToRoot(rootPtr);
+    a0_ptr_.connectToRoot(rootPtr);
   }
 
   void disconnectFromRoot(bool isRoot, void * rootPtr) {
-    a0_ptr_.disconnectFromRoot(isRoot, rootPtr);
     a1_ptr_.disconnectFromRoot(isRoot, rootPtr);
+    a0_ptr_.disconnectFromRoot(isRoot, rootPtr);
   }
 };
 
@@ -114,6 +115,12 @@ class A {
   }
 };
 
+class D {
+ public:
+  A a0;
+  A *a1;
+};
+
 int main() {
   // NOTE(redra): Test 0
 //  std::thread thr;
@@ -148,11 +155,12 @@ int main() {
     a_copy_ptr_ = a0_ptr_;
 
     auto c0_ptr_ = a0_ptr_->b_ptr_->c_ptr_;
-    thr = std::thread {[c0_ptr_]() {
+    thr = std::thread {[a0_ptr_]() {
       std::this_thread::sleep_for(std::chrono::seconds(2));
-      std::cout << "Object name is " << c0_ptr_->getName() << std::endl;
+      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
       std::this_thread::sleep_for(std::chrono::seconds(2));
-      std::cout << "Object name is " << c0_ptr_->getName() << std::endl;
+      a0_ptr_->b_ptr_->c_ptr_ = new C();
+      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
     }};
     memory::gc_ptr<A> a1_ptr_{};
     a1_ptr_.create_object();

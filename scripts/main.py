@@ -1,5 +1,6 @@
 import re
 import json
+import sys
 from pprint import pprint
 from typing import List, Set
 
@@ -146,6 +147,48 @@ class A {
 import clang.cindex
 
 
+class TypeDecl:
+    def __init__(self, cursor):
+        self.var_name = cursor.spelling
+        self.parents = []
+        parent_iter = cursor.lexical_parent
+        while parent_iter.kind == CursorKind.NAMESPACE or parent_iter.kind == CursorKind.CLASS_DECL:
+            self.parents.append((parent_iter.kind, parent_iter))
+            parent_iter = parent_iter.lexical_parent
+        self.parents = list(reversed(self.parents))
+
+    def __eq__(self, other):
+        return self.var_name == other.var_name and self.parents == other.parents
+
+    def __hash__(self):
+        hash_sum = hash(self.var_name)
+        for item in self.parents:
+            hash_sum ^= hash(item[1].spelling)
+        return hash_sum
+
+    def __repr__(self):
+        text = ''
+        for item in self.parents:
+            if item[0] == CursorKind.NAMESPACE:
+                text += f"namespace file={item[1].location.file}, line=({item[1].extent.start.line}:{item[1].extent.start.column}, {item[1].extent.end.line}:{item[1].extent.end.column});"
+            elif item[0] == CursorKind.CLASS_DECL:
+                text += f"class file={item[1].location.file}, line=({item[1].extent.start.line}:{item[1].extent.start.column}, {item[1].extent.end.line}:{item[1].extent.end.column});"
+        return text
+
+    @property
+    def file(self):
+        if len(self.parents) > 0:
+            return self.parents[-1][1].location.file
+
+    @property
+    def lines(self):
+        if len(self.parents) > 0:
+            return (self.parents[-1][1].extent.start.line,
+                    self.parents[-1][1].extent.start.column,
+                    self.parents[-1][1].extent.end.line,
+                    self.parents[-1][1].extent.end.column)
+
+
 class GCPtrTypeDecl:
     def __init__(self, cursor):
         self.var_name = cursor.spelling
@@ -188,7 +231,7 @@ class GCPtrTypeDecl:
                     self.parents[-1][1].extent.end.column)
 
 
-def find_all_gc_ptr(cursor: clang.cindex.Cursor, results):
+def find_all_gc_ptr(cursor: clang.cindex.Cursor, results, cached_types):
     """
     Find all references to the type named 'typename'
     :param cursor: clang.cindex.Cursor
@@ -207,6 +250,9 @@ def find_all_gc_ptr(cursor: clang.cindex.Cursor, results):
                                                                                 cursor.location.column))
                 results.add(GCPtrTypeDecl(cursor))
                 return
+            # else:
+            #     results.add(TypeDecl(cursor))
+            #     return
         else:
             def_node = cursor.get_definition()
             print('Declared Node: {} ({}) [line={}, col={}]'.format(cursor.spelling,
@@ -218,14 +264,15 @@ def find_all_gc_ptr(cursor: clang.cindex.Cursor, results):
                 print('def_node.type is {}'.format(str(def_node.type.kind)))
                 for child in def_node.get_children():
                     print('Element has child')
-                    find_all_gc_ptr(child, results)
+                    find_all_gc_ptr(child, results, cached_types)
 
     for child in cursor.get_children():
-        find_all_gc_ptr(child, results)
+        find_all_gc_ptr(child, results, cached_types)
 
 
 if __name__ == '__main__':
-    json_file = '/home/redra/Projects/DeterministicGarbagePointer/example/cmake-build-release/compile_commands.json'
+    json_file = sys.argv[1]
+    print(json_file)
     with open(json_file, "r") as jsf:
         objects = json.load(jsf)
 
@@ -250,7 +297,7 @@ if __name__ == '__main__':
                              options=0)
             print('Translation unit: {}'.format(tu.spelling))
             results = set()
-            find_all_gc_ptr(tu.cursor, results)
+            find_all_gc_ptr(tu.cursor, results, dict())
             print(f'results is {results}')
             for res in results:
                 print(f'res.file is {res.file}')
