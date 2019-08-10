@@ -20,6 +20,21 @@ class C {
      std::cout << "~C()" << std::endl;
   }
 
+  std::string getName() {
+    return "class A";
+  }
+
+  memory::gc_ptr<A> a0_ptr_;
+  memory::gc_ptr<A> a1_ptr_;
+  std::vector<int> array;
+
+ protected:
+  // GENERATED CODE FOR GC_PTR
+  template <typename T>
+  friend class memory::has_use_gc_ptr;
+  template <typename T>
+  friend class memory::gc_ptr;
+
   void connectToRoot(void * rootPtr) {
     a0_ptr_.connectToRoot(rootPtr);
     a1_ptr_.connectToRoot(rootPtr);
@@ -29,10 +44,6 @@ class C {
     a0_ptr_.disconnectFromRoot(isRoot, rootPtr);
     a1_ptr_.disconnectFromRoot(isRoot, rootPtr);
   }
-
-  memory::gc_ptr<A> a0_ptr_;
-  memory::gc_ptr<A> a1_ptr_;
-  std::vector<int> array;
 };
 
 class B {
@@ -47,6 +58,20 @@ class B {
     std::cout << "~B()" << std::endl;
   }
 
+  std::string getName() {
+    return "class A";
+  }
+
+  memory::gc_ptr<C> c_ptr_;
+  std::vector<int> array;
+
+ protected:
+  // GENERATED CODE FOR GC_PTR
+  template <typename T>
+  friend class memory::has_use_gc_ptr;
+  template <typename T>
+  friend class memory::gc_ptr;
+
   void connectToRoot(void * rootPtr) {
     c_ptr_.connectToRoot(rootPtr);
   }
@@ -54,9 +79,6 @@ class B {
   void disconnectFromRoot(bool isRoot, void * rootPtr) {
     c_ptr_.disconnectFromRoot(isRoot, rootPtr);
   }
-
-  memory::gc_ptr<C> c_ptr_;
-  std::vector<int> array;
 };
 
 class A {
@@ -70,6 +92,19 @@ class A {
     std::cout << "~A()" << std::endl;
   }
 
+  std::string getName() {
+    return "class A";
+  }
+
+  memory::gc_ptr<B> b_ptr_;
+
+ protected:
+  // GENERATED CODE FOR GC_PTR
+  template <typename T>
+  friend class memory::has_use_gc_ptr;
+  template <typename T>
+  friend class memory::gc_ptr;
+
   void connectToRoot(void * rootPtr) {
     b_ptr_.connectToRoot(rootPtr);
   }
@@ -77,12 +112,6 @@ class A {
   void disconnectFromRoot(bool isRoot, void * rootPtr) {
     b_ptr_.disconnectFromRoot(isRoot, rootPtr);
   }
-
-  std::string getName() {
-    return "class A";
-  }
-
-  memory::gc_ptr<B> b_ptr_;
 };
 
 int main() {
@@ -105,6 +134,7 @@ int main() {
 //    a1_ptr_->b_ptr_ = a0_ptr_->b_ptr_;
 //    a1_ptr_->b_ptr_->c_ptr_->a0_ptr_  = a1_ptr_;
 //  }
+
 //  thr.join();
 
   // NOTE(redra): Test 1
@@ -117,12 +147,12 @@ int main() {
     a_copy_ptr_.create_object();
     a_copy_ptr_ = a0_ptr_;
 
-    thr = std::thread {[a0_ptr_]() {
+    auto c0_ptr_ = a0_ptr_->b_ptr_->c_ptr_;
+    thr = std::thread {[c0_ptr_]() {
       std::this_thread::sleep_for(std::chrono::seconds(2));
-      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
-      a0_ptr_->b_ptr_->c_ptr_ = memory::gc_ptr<C>{new C()};
+      std::cout << "Object name is " << c0_ptr_->getName() << std::endl;
       std::this_thread::sleep_for(std::chrono::seconds(2));
-      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
+      std::cout << "Object name is " << c0_ptr_->getName() << std::endl;
     }};
     memory::gc_ptr<A> a1_ptr_{};
     a1_ptr_.create_object();
