@@ -10,6 +10,17 @@
 
 class A;
 
+template <typename T>
+class Df {
+ public:
+  T t;
+};
+
+class DD {
+ public:
+  A *a0;
+};
+
 class C {
  public:
   C() {
@@ -29,22 +40,19 @@ class C {
   memory::gc_ptr<A> a1_ptr_;
   std::vector<int> array;
 
- protected:
+ public:
   // GENERATED CODE FOR GC_PTR
-  template <typename T>
-  friend class memory::has_use_gc_ptr;
-  template <typename T>
-  friend class memory::gc_ptr;
-
-  void connectToRoot(void * rootPtr) {
+  // BEGIN GC_PTR
+  void connectToRoot(const void * rootPtr) const {
     a1_ptr_.connectToRoot(rootPtr);
     a0_ptr_.connectToRoot(rootPtr);
   }
 
-  void disconnectFromRoot(bool isRoot, void * rootPtr) {
+  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {
     a1_ptr_.disconnectFromRoot(isRoot, rootPtr);
     a0_ptr_.disconnectFromRoot(isRoot, rootPtr);
   }
+  // END GC_PTR
 };
 
 class B {
@@ -66,20 +74,17 @@ class B {
   memory::gc_ptr<C> c_ptr_;
   std::vector<int> array;
 
- protected:
+ public:
   // GENERATED CODE FOR GC_PTR
-  template <typename T>
-  friend class memory::has_use_gc_ptr;
-  template <typename T>
-  friend class memory::gc_ptr;
-
-  void connectToRoot(void * rootPtr) {
+  // BEGIN GC_PTR
+  void connectToRoot(const void * rootPtr) const {
     c_ptr_.connectToRoot(rootPtr);
   }
 
-  void disconnectFromRoot(bool isRoot, void * rootPtr) {
+  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {
     c_ptr_.disconnectFromRoot(isRoot, rootPtr);
   }
+  // END GC_PTR
 };
 
 class A {
@@ -99,27 +104,60 @@ class A {
 
   memory::gc_ptr<B> b_ptr_;
 
- protected:
+ public:
   // GENERATED CODE FOR GC_PTR
-  template <typename T>
-  friend class memory::has_use_gc_ptr;
-  template <typename T>
-  friend class memory::gc_ptr;
-
-  void connectToRoot(void * rootPtr) {
+  // BEGIN GC_PTR
+  void connectToRoot(const void * rootPtr) const {
     b_ptr_.connectToRoot(rootPtr);
   }
 
-  void disconnectFromRoot(bool isRoot, void * rootPtr) {
+  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {
     b_ptr_.disconnectFromRoot(isRoot, rootPtr);
   }
+  // END GC_PTR
 };
 
 class D {
  public:
-  A a0;
-  A *a1;
+  Df<A> fd;
+  const A a0;
+  A const *a1;
+
+ public:
+  // GENERATED CODE FOR GC_PTR
+  // BEGIN GC_PTR
+  void connectToRoot(const void * rootPtr) const {
+    a0.connectToRoot(rootPtr);
+  }
+
+  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {
+    a0.disconnectFromRoot(isRoot, rootPtr);
+  }
+  // END GC_PTR
 };
+
+namespace asdasd {
+class CC : public A {
+
+ private:
+  memory::gc_ptr<B> b_ptr_;
+
+ public:
+  // GENERATED CODE FOR GC_PTR
+  // BEGIN GC_PTR
+  void connectToRoot(const void * rootPtr) const {
+    A::connectToRoot(rootPtr);
+    b_ptr_.connectToRoot(rootPtr);
+  }
+
+  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {
+    A::disconnectFromRoot(isRoot, rootPtr);
+    b_ptr_.disconnectFromRoot(isRoot, rootPtr);
+  }
+  // END GC_PTR
+};
+}
+
 
 int main() {
   // NOTE(redra): Test 0
@@ -144,16 +182,19 @@ int main() {
 
 //  thr.join();
 
+  Df<A> ad;
   // NOTE(redra): Test 1
   std::thread thr;
   {
     memory::gc_ptr<A> a0_ptr_{new A()};
     a0_ptr_->b_ptr_->c_ptr_->a1_ptr_ = a0_ptr_;
 
+    ad.t.b_ptr_ = a0_ptr_->b_ptr_;
     memory::gc_ptr<A> a_copy_ptr_{};
     a_copy_ptr_.create_object();
     a_copy_ptr_ = a0_ptr_;
 
+    asdasd::CC cc;
     auto c0_ptr_ = a0_ptr_->b_ptr_->c_ptr_;
     thr = std::thread {[a0_ptr_]() {
       std::this_thread::sleep_for(std::chrono::seconds(2));

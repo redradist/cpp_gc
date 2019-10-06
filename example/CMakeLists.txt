@@ -13,4 +13,4 @@ include(${CMAKE_CURRENT_LIST_DIR}/../scripts/gc_ptr_config.cmake)
 
 add_executable(NoMoreGarbadgeCollector main.cpp)
 target_link_libraries(NoMoreGarbadgeCollector pthread c++)
-use_gc_ptr(NoMoreGarbadgeCollector)
+#use_gc_ptr(NoMoreGarbadgeCollector)

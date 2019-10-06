@@ -58,7 +58,7 @@ class has_use_gc_ptr
 struct gc_object_control_block {
   const bool is_aligned_memory_ = false;
   std::atomic_flag lock_object_ = ATOMIC_FLAG_INIT;
-  std::unordered_map<void *, uint32_t> root_ptrs_;
+  std::unordered_map<const void *, uint32_t> root_ptrs_;
 };
 
 template <typename TObject>
@@ -136,7 +136,7 @@ class gc_ptr {
     return *this;
   }
 
-  void connectToRoot(void * rootPtr) {
+  void connectToRoot(const void * rootPtr) const {
     root_ptrs_.insert(rootPtr);
     addRootPtrToObject(rootPtr);
     if (is_root_) {
@@ -145,7 +145,7 @@ class gc_ptr {
     }
   }
 
-  void disconnectFromRoot(bool isRoot, void * rootPtr) {
+  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {
     root_ptrs_.erase(rootPtr);
     removeRootPtrFromObject(isRoot, rootPtr);
   }
@@ -170,7 +170,7 @@ class gc_ptr {
     }
   }
 
-  void addRootPtrToObject(void *rootPtr) const {
+  void addRootPtrToObject(const void *rootPtr) const {
     if (object_control_block_ptr_ != nullptr) {
       bool isNewRoot;
       {
@@ -190,7 +190,7 @@ class gc_ptr {
     }
   }
 
-  void removeRootPtrFromObject(bool isRoot, void *rootPtr) {
+  void removeRootPtrFromObject(const bool isRoot, const void *rootPtr) const {
     if (object_control_block_ptr_ != nullptr) {
       bool isRemovedRoot = false;
       bool isNoRoots;
@@ -232,10 +232,10 @@ class gc_ptr {
     }
   }
 
-  bool is_root_ = true;
-  std::unordered_set<void *> root_ptrs_;
-  TObject * object_ptr_ = nullptr;
-  gc_object_control_block * object_control_block_ptr_ = nullptr;
+  mutable bool is_root_ = true;
+  mutable std::unordered_set<const void *> root_ptrs_;
+  mutable TObject * object_ptr_ = nullptr;
+  mutable gc_object_control_block * object_control_block_ptr_ = nullptr;
 };
 
 }

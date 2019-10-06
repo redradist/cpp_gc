@@ -1,167 +1,116 @@
 import re
 import json
 import sys
-from pprint import pprint
-from typing import List, Set
 
 from clang.cindex import *
-
 from ctypes.util import find_library
 
 Config.set_library_file('/usr/lib/llvm-7/lib/libclang.so.1')
 # Config.set_library_file('/usr/lib/llvm-9/lib/libclang.so')
 
-code_to_analyze_0 = '''
-// -------------------------------------------------------------------------------------------------
-//
-// Copyright (C) 2017, HERE Global B.V.
-//
-// These coded instructions, statements, and computer programs contain
-// unpublished proprietary information of HERE Global B.V., and are copy
-// protected by law. They may not be disclosed to third parties or copied
-// or duplicated in any form, in whole or in part, without the specific,
-// prior written permission of HERE Global B.V.
-//
-// -------------------------------------------------------------------------------------------------
-//
-// Maintainer: Traffic Team
-//
-// Description: Conversions between AlertC and TPEG values.
-//
-// -------------------------------------------------------------------------------------------------
-
-#include <tmc/AlertC2Tpeg.h>
-#include <tmc/TMCDataTypes.h>
-
-namespace smart5
-{
-namespace traffic
-{
-namespace
-{
-// Mapping table used for reverse mapping of TMC event code to corresponding TEC-attributes
-#include <tmc/TMCTable2TEC.inc>
-}
-
-const Tmc2Tec*
-get_tec_info_from_tmc_code( uint16 event_code )
-{
-    if ( event_code < MIN_INCIDENT_EVENT_CODE || event_code >= G_COUNTOF( tmc2tec ) )
-    {
-        return nullptr;
-    }
-
-    const Tmc2Tec* to_tec = &tmc2tec[ event_code ];
-    if ( to_tec->effect_code == 0 && to_tec->main_cause == 0 && to_tec->sub_cause == 0
-         && to_tec->lane_restriction == 0 && to_tec->advice_code == 0
-         && to_tec->vehicle_restriction == 0 )
-    {
-        return nullptr;
-    }
-
-    return to_tec;
-}
-}
-}
-
-'''
-
-code_to_analyze_1 = '''
-namespace MyNamespace {
-template<typename T>
-struct Person;
-}
-
-class Room {
-public:
-    void add_person(MyNamespace::Person<int> person)
-    {
-        // do stuff
-    }
-
-private:
-    MyNamespace::Person<int>* people_in_room;
-};
-
-
-template <class T, int N>
-class Bag<T, N> {
-};
-
-
-int main()
-{
-    MyNamespace::Person<int>* p = new MyNamespace::Person<int>();
-    Bag<MyNamespace::Person<int>, 42> bagofpersons;
-
-    return 0;
-}
-'''
-
-code_to_analyze_2 = '''
-namespace memory {
-
-template<typename>
-class gc_ptr {
-
-};
-
-};
-
-class B {
-
-};
-
-using namespace memory;
-
-namespace custom {
-
-class S {
-class A {
- public:
-  A() {
-    //b_ptr_.create_object();
-  }
-
-  ~A() {
-  }
-
-  void connectToRoot(void * rootPtr) {
-    //b_ptr_.connectToRoot(rootPtr);
-  }
-
-  void disconnectFromRoot(void * rootPtr) {
-    //b_ptr_.disconnectFromRoot(rootPtr);
-  }
-
-  std::string getName() {
-    return "class A";
-  }
-
-  memory::gc_ptr<B> b_ptr_;
-};
-};
-};
-'''
-
 import clang.cindex
 
 
-class TypeDecl:
-    def __init__(self, cursor):
-        self.var_name = cursor.spelling
-        self.parents = []
+def get_lexical_parents(cursor):
+    parents = []
+    if hasattr(cursor, 'lexical_parent'):
         parent_iter = cursor.lexical_parent
-        while parent_iter.kind == CursorKind.NAMESPACE or parent_iter.kind == CursorKind.CLASS_DECL:
-            self.parents.append((parent_iter.kind, parent_iter))
+        while parent_iter.kind == CursorKind.NAMESPACE or \
+              parent_iter.kind == CursorKind.CLASS_DECL:
+            parents.append((parent_iter.kind, parent_iter))
             parent_iter = parent_iter.lexical_parent
-        self.parents = list(reversed(self.parents))
+    return list(reversed(parents))
+
+
+class ClassDecl:
+    def __init__(self, cursor, base=None, additional_info=None):
+        self.class_decl = cursor
+        self.base_decl = base
+        spelling_type = cursor.spelling
+        record_type = re.search(r'(const)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)', spelling_type)
+        if record_type:
+            self.class_name = record_type.group('type_name')
+        else:
+            self.class_name = spelling_type
+        self.parents = get_lexical_parents(cursor)
+        self.additional_info = additional_info
+        print(f'self')
 
     def __eq__(self, other):
-        return self.var_name == other.var_name and self.parents == other.parents
+        return self.class_name == other.class_name and self.parents == other.parents
 
     def __hash__(self):
-        hash_sum = hash(self.var_name)
+        hash_sum = hash(self.class_name)
+        for item in self.parents:
+            hash_sum ^= hash(item[1].spelling)
+        return hash_sum
+
+    def __repr__(self):
+        text = f"class file={self.class_decl.location.file}, line=({self.class_decl.extent.start.line}:{self.class_decl.extent.start.column}, {self.class_decl.extent.end.line}:{self.class_decl.extent.end.column});"
+        return text
+
+    @property
+    def file(self):
+        return self.class_decl.location.file
+
+    @property
+    def lines(self):
+        return (self.class_decl.extent.start.line,
+                self.class_decl.extent.start.column,
+                self.class_decl.extent.end.line,
+                self.class_decl.extent.end.column)
+
+    def __hash__(self):
+        return hash(self.class_name)
+
+    def __eq__(self, other):
+        return self.class_name.__eq__(other.class_name)
+
+
+class MemberClassUsedGCPtrClassDecl:
+    def __init__(self, cursor, class_used_class_used_gc_ptr, class_used_gc_ptr):
+        self.member_name = cursor.spelling
+        self.class_used_class_used_gc_ptr = class_used_class_used_gc_ptr
+        self.class_used_gc_ptr = class_used_gc_ptr
+        self.parents = get_lexical_parents(cursor)
+
+    def __eq__(self, other):
+        return self.member_name == other.member_name and self.parents == other.parents
+
+    def __hash__(self):
+        hash_sum = hash(self.member_name)
+        for item in self.parents:
+            hash_sum ^= hash(item[1].spelling)
+        return hash_sum
+
+    def __repr__(self):
+        text = ''
+        for item in self.parents:
+            if item[0] == CursorKind.NAMESPACE:
+                text += f"namespace file={item[1].location.file}, line=({item[1].extent.start.line}:{item[1].extent.start.column}, {item[1].extent.end.line}:{item[1].extent.end.column});"
+            elif item[0] == CursorKind.CLASS_DECL:
+                text += f"class file={item[1].location.file}, line=({item[1].extent.start.line}:{item[1].extent.start.column}, {item[1].extent.end.line}:{item[1].extent.end.column});"
+        return text
+
+    @property
+    def file(self):
+        return self.class_used_gc_ptr.file
+
+    @property
+    def lines(self):
+        return self.class_used_gc_ptr.lines
+
+
+class GCPtrMemberClassDecl:
+    def __init__(self, cursor):
+        self.member_name = cursor.spelling
+        self.parents = get_lexical_parents(cursor)
+
+    def __eq__(self, other):
+        return self.member_name == other.member_name and self.parents == other.parents
+
+    def __hash__(self):
+        hash_sum = hash(self.member_name)
         for item in self.parents:
             hash_sum ^= hash(item[1].spelling)
         return hash_sum
@@ -189,90 +138,93 @@ class TypeDecl:
                     self.parents[-1][1].extent.end.column)
 
 
-class GCPtrTypeDecl:
-    def __init__(self, cursor):
-        self.var_name = cursor.spelling
-        self.parents = []
-        parent_iter = cursor.lexical_parent
-        while parent_iter.kind == CursorKind.NAMESPACE or parent_iter.kind == CursorKind.CLASS_DECL:
-            self.parents.append((parent_iter.kind, parent_iter))
-            parent_iter = parent_iter.lexical_parent
-        self.parents = list(reversed(self.parents))
-
-    def __eq__(self, other):
-        return self.var_name == other.var_name and self.parents == other.parents
-
-    def __hash__(self):
-        hash_sum = hash(self.var_name)
-        for item in self.parents:
-            hash_sum ^= hash(item[1].spelling)
-        return hash_sum
-
-    def __repr__(self):
-        text = ''
-        for item in self.parents:
-            if item[0] == CursorKind.NAMESPACE:
-                text += f"namespace file={item[1].location.file}, line=({item[1].extent.start.line}:{item[1].extent.start.column}, {item[1].extent.end.line}:{item[1].extent.end.column});"
-            elif item[0] == CursorKind.CLASS_DECL:
-                text += f"class file={item[1].location.file}, line=({item[1].extent.start.line}:{item[1].extent.start.column}, {item[1].extent.end.line}:{item[1].extent.end.column});"
-        return text
-
-    @property
-    def file(self):
-        if len(self.parents) > 0:
-            return self.parents[-1][1].location.file
-
-    @property
-    def lines(self):
-        if len(self.parents) > 0:
-            return (self.parents[-1][1].extent.start.line,
-                    self.parents[-1][1].extent.start.column,
-                    self.parents[-1][1].extent.end.line,
-                    self.parents[-1][1].extent.end.column)
-
-
-def find_all_gc_ptr(cursor: clang.cindex.Cursor, results, cached_types):
+def find_all_use_gc_ptr(cursor: clang.cindex.Cursor, all_gc_ptrs, class_inherited_from, cached_class_used_gc_ptr, cached_class_used_class):
     """
     Find all references to the type named 'typename'
     :param cursor: clang.cindex.Cursor
     :return: None
     """
-    pprint('cursor is {}'.format(cursor))
-    pprint(repr(cursor))
+    type = cursor.type
+    spelling_type = type.spelling
     if cursor.kind.is_declaration():
-        if cursor.kind == CursorKind.FIELD_DECL:
+        type = cursor.type
+        spelling_type = type.spelling
+        template_spelling = cursor.spelling
+        if spelling_type == 'Df<A>':
+            for child in cursor.get_children():
+                print(f'child is {repr(child)}')
+                find_all_use_gc_ptr(child,
+                                    all_gc_ptrs,
+                                    class_inherited_from,
+                                    cached_class_used_gc_ptr,
+                                    cached_class_used_class)
+        if template_spelling == 'Df' and cursor.kind == CursorKind.CLASS_TEMPLATE:
+            for child in cursor.get_children():
+                print(f'child is {repr(child)}')
+                find_all_use_gc_ptr(child,
+                                    all_gc_ptrs,
+                                    class_inherited_from,
+                                    cached_class_used_gc_ptr,
+                                    cached_class_used_class)
+        elif cursor.kind == CursorKind.NAMESPACE:
+            for child in cursor.get_children():
+                find_all_use_gc_ptr(child,
+                                    all_gc_ptrs,
+                                    class_inherited_from,
+                                    cached_class_used_gc_ptr,
+                                    cached_class_used_class)
+        elif cursor.kind == CursorKind.CLASS_DECL:
             spelling_type = cursor.type.spelling
+            if spelling_type == 'CC':
+                print("Found class CC")
+            bases = get_base_classes(cursor)
+            for base in bases:
+                if ClassDecl(base) in cached_class_used_gc_ptr:
+                    cached_class_used_gc_ptr.add(ClassDecl(cursor, base))
+                    class_inherited_from.add(ClassDecl(cursor, base))
+                    break
+            for child in cursor.get_children():
+                find_all_use_gc_ptr(child,
+                                    all_gc_ptrs,
+                                    class_inherited_from,
+                                    cached_class_used_gc_ptr,
+                                    cached_class_used_class)
+        elif cursor.kind == CursorKind.FIELD_DECL:
             is_gc_ptr = re.search(r'memory::gc_ptr', spelling_type)
             if is_gc_ptr:
-                print('CursorKind FIELD_DECL: {} ({}) [line={}, col={}]'.format(cursor.spelling,
-                                                                                cursor.displayname,
-                                                                                cursor.location.line,
-                                                                                cursor.location.column))
-                results.add(GCPtrTypeDecl(cursor))
-                return
-            # else:
-            #     results.add(TypeDecl(cursor))
-            #     return
-        else:
-            def_node = cursor.get_definition()
-            print('Declared Node: {} ({}) [line={}, col={}]'.format(cursor.spelling,
-                                                                    cursor.displayname,
-                                                                    cursor.location.line,
-                                                                    cursor.location.column))
-            if def_node and hasattr(def_node, 'kind') and (def_node.kind == CursorKind.NAMESPACE or def_node.kind == CursorKind.CLASS_DECL):
-                print('def_node is {}'.format(str(def_node)))
-                print('def_node.type is {}'.format(str(def_node.type.kind)))
-                for child in def_node.get_children():
-                    print('Element has child')
-                    find_all_gc_ptr(child, results, cached_types)
+                if cursor.lexical_parent is not None:
+                    cached_class_used_gc_ptr.add(ClassDecl(cursor.lexical_parent))
+                all_gc_ptrs.add(GCPtrMemberClassDecl(cursor))
+            elif type.kind == TypeKind.RECORD:
+                class_used_gc_ptr = ClassDecl(cursor.type)
+                if class_used_gc_ptr in cached_class_used_gc_ptr:
+                    all_gc_ptrs.add(GCPtrMemberClassDecl(cursor))
+    else:
+        for child in cursor.get_children():
+            find_all_use_gc_ptr(child,
+                                all_gc_ptrs,
+                                class_inherited_from,
+                                cached_class_used_gc_ptr,
+                                cached_class_used_class)
 
-    for child in cursor.get_children():
-        find_all_gc_ptr(child, results, cached_types)
+
+def get_base_classes(cursor):
+    bases = []
+    if cursor.kind == CursorKind.CLASS_DECL:
+        for node in cursor.get_children():
+            if node.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
+                bases.append(node.referenced)
+        if len(bases) > 0:
+            print("Found bases:")
+            for base in bases:
+                print(f"Base {base.type.spelling}")
+    return bases
 
 
 if __name__ == '__main__':
-    json_file = sys.argv[1]
-    print(json_file)
+    # json_file = sys.argv[1]
+    # print(json_file)
+    json_file = '/home/redra/Projects/DeterministicGarbagePointer/example/cmake-build-debug/compile_commands.json'
     with open(json_file, "r") as jsf:
         objects = json.load(jsf)
 
@@ -296,14 +248,27 @@ if __name__ == '__main__':
                              args=args,
                              options=0)
             print('Translation unit: {}'.format(tu.spelling))
-            results = set()
-            find_all_gc_ptr(tu.cursor, results, dict())
-            print(f'results is {results}')
-            for res in results:
+            all_gc_ptrs = set()
+            class_inherited_from = set()
+            cached_class_used_gc_ptr = set()
+            cached_class_used_class = dict()
+            find_all_use_gc_ptr(tu.cursor, all_gc_ptrs, class_inherited_from, cached_class_used_gc_ptr, cached_class_used_class)
+            cached_class_used_class_used_gc_ptr = dict()
+            for cl in cached_class_used_gc_ptr:
+                if cl.class_name in cached_class_used_class:
+                    classes_used_class_used_gc_ptr = cached_class_used_class[cl.class_name]
+                    for class_used_class_used_gc_ptr in classes_used_class_used_gc_ptr:
+                        all_gc_ptrs.add(MemberClassUsedGCPtrClassDecl(class_used_class_used_gc_ptr.additional_info, class_used_class_used_gc_ptr, cl))
+            print(f'results is {all_gc_ptrs}')
+            for res in all_gc_ptrs:
                 print(f'res.file is {res.file}')
                 print(f'res.lines is {res.lines}')
             gc_ptr_locations = dict()
-            for res in results:
+            for res in all_gc_ptrs:
+                if str(res.file) not in gc_ptr_locations:
+                    gc_ptr_locations[str(res.file)] = set()
+                gc_ptr_locations[str(res.file)].add(res)
+            for res in class_inherited_from:
                 if str(res.file) not in gc_ptr_locations:
                     gc_ptr_locations[str(res.file)] = set()
                 gc_ptr_locations[str(res.file)].add(res)
@@ -331,8 +296,8 @@ if __name__ == '__main__':
                     line_offset = dict()
                     while indx < len(lines):
                         cur_line = lines[indx]
-                        if not is_generated and '// GENERATED CODE FOR GC_PTR' in cur_line:
-                            is_generated = True
+                        # if not is_generated and '// GENERATED CODE FOR GC_PTR' in cur_line:
+                        #     is_generated = True
                         if line and line[2] == indx+1:
                             column_offset = 0
                             if line[2] in line_offset:
@@ -340,7 +305,20 @@ if __name__ == '__main__':
                             if is_generated:
                                 new_lines.append(cur_line)
                             else:
-                                var_names = [gc_ptr.var_name for gc_ptr in gc_ptr_locations_pre_class[line]]
+                                member_names = []
+                                for gc_ptr in gc_ptr_locations_pre_class[line]:
+                                    if hasattr(gc_ptr, 'member_name'):
+                                        member_names.append(gc_ptr.member_name)
+                                base_class_names = []
+                                for gc_ptr in gc_ptr_locations_pre_class[line]:
+                                    if hasattr(gc_ptr, 'base_decl') and gc_ptr.base_decl is not None:
+                                        base_class_names.append(gc_ptr.base_decl.spelling)
+                                class_used_class_used_gc_ptr = dict()
+                                for gc_ptr in gc_ptr_locations_pre_class[line]:
+                                    if hasattr(gc_ptr, 'class_used_class_used_gc_ptr'):
+                                        if gc_ptr.class_used_class_used_gc_ptr not in class_used_class_used_gc_ptr:
+                                            class_used_class_used_gc_ptr[gc_ptr.class_used_class_used_gc_ptr] = list()
+                                        class_used_class_used_gc_ptr[gc_ptr.class_used_class_used_gc_ptr].append(gc_ptr)
                                 new_lines.append(cur_line[:line[3]-2-column_offset])
                                 if line[2] in line_offset:
                                     line_offset[line[2]] = line_offset[line[2]] + new_lines[-1]
@@ -349,26 +327,26 @@ if __name__ == '__main__':
                                 old_len = len(new_lines)
                                 connect_lines = []
                                 disconnect_lines = []
-                                for car_name in var_names:
-                                    connect_lines.append(f'    {car_name}.connectToRoot(rootPtr);\n')
-                                    disconnect_lines.append(f'    {car_name}.disconnectFromRoot(isRoot, rootPtr);\n')
+                                for base_class in base_class_names:
+                                    connect_lines.append(f'    {base_class}::connectToRoot(rootPtr);\n')
+                                    disconnect_lines.append(f'    {base_class}::disconnectFromRoot(isRoot, rootPtr);\n')
+                                for member_name in member_names:
+                                    connect_lines.append(f'    {member_name}.connectToRoot(rootPtr);\n')
+                                    disconnect_lines.append(f'    {member_name}.disconnectFromRoot(isRoot, rootPtr);\n')
                                 new_lines.append("\n")
-                                new_lines.append(" protected:\n")
+                                new_lines.append(" public:\n")
                                 new_lines.append("  // GENERATED CODE FOR GC_PTR\n")
-                                new_lines.append("  template <typename T>\n")
-                                new_lines.append("  friend class memory::has_use_gc_ptr;\n")
-                                new_lines.append("  template <typename T>\n")
-                                new_lines.append("  friend class memory::gc_ptr;\n")
-                                new_lines.append("\n")
-                                new_lines.append("  void connectToRoot(void * rootPtr) {\n")
+                                new_lines.append("  // BEGIN GC_PTR\n")
+                                new_lines.append("  void connectToRoot(const void * rootPtr) const {\n")
                                 for connect_line in connect_lines:
                                     new_lines.append(connect_line)
                                 new_lines.append("  }\n")
                                 new_lines.append("\n")
-                                new_lines.append("  void disconnectFromRoot(bool isRoot, void * rootPtr) {\n")
+                                new_lines.append("  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {\n")
                                 for disconnect_line in disconnect_lines:
                                     new_lines.append(disconnect_line)
                                 new_lines.append("  }\n")
+                                new_lines.append("  // END GC_PTR\n")
                                 new_lines.append(cur_line[line[3]-2-column_offset:])
                                 try:
                                     line = next(line_iter)
