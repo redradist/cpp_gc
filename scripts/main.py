@@ -137,6 +137,35 @@ class GCPtrMemberClassDecl:
                     self.parents[-1][1].extent.end.line,
                     self.parents[-1][1].extent.end.column)
 
+is_template_class = 0
+
+def search_item_with(cursor: clang.cindex.Cursor, name):
+    type = cursor.type
+    cursor_type_spelling = type.spelling
+    cursor_spelling = cursor.spelling
+    if cursor_spelling == name:
+        print(f'Found {name} item, repr(type): {repr(type)}')
+        print(f'Found {name} item, cursor_type_spelling: {cursor_type_spelling}')
+        print(f'Found {name} item, cursor_spelling: {cursor_spelling}')
+        print(f'Found {name} item, repr(cursor): {repr(cursor)}')
+        print(f'Found {name} item, str(cursor): {str(cursor)}')
+        print(f'Found {name} item, dir(cursor): {dir(cursor)}')
+        return True
+    elif hasattr(cursor, 'get_children'):
+        for child in cursor.get_children():
+            is_found = search_item_with(child, name)
+            if is_found:
+                print('>>>>>>>>>>>>>>>>')
+                print(f'Found in {name} item, repr(type): {repr(type)}')
+                print(f'Found in {name} item, cursor_type_spelling: {cursor_type_spelling}')
+                print(f'Found in {name} item, cursor_spelling: {cursor_spelling}')
+                print(f'Found in {name} item, repr(cursor): {repr(cursor)}')
+                print(f'Found in {name} item, str(cursor): {str(cursor)}')
+                print(f'Found in {name} item, dir(cursor): {dir(cursor)}')
+                print('<<<<<<<<<<<<<<<<')
+                return True
+    return False
+
 
 def find_all_use_gc_ptr(cursor: clang.cindex.Cursor, all_gc_ptrs, class_inherited_from, cached_class_used_gc_ptr, cached_class_used_class):
     """
@@ -144,13 +173,18 @@ def find_all_use_gc_ptr(cursor: clang.cindex.Cursor, all_gc_ptrs, class_inherite
     :param cursor: clang.cindex.Cursor
     :return: None
     """
+    global is_template_class
+
     type = cursor.type
     spelling_type = type.spelling
     if cursor.kind.is_declaration():
         type = cursor.type
-        spelling_type = type.spelling
-        template_spelling = cursor.spelling
+        cursor_type_spelling = type.spelling
+        cursor_spelling = cursor.spelling
         if spelling_type == 'Df<A>':
+            print(f'Template Declaration Instance is {dir(cursor)}')
+            children = cursor.get_children()
+            is_template_class += 1
             for child in cursor.get_children():
                 print(f'child is {repr(child)}')
                 find_all_use_gc_ptr(child,
@@ -158,14 +192,27 @@ def find_all_use_gc_ptr(cursor: clang.cindex.Cursor, all_gc_ptrs, class_inherite
                                     class_inherited_from,
                                     cached_class_used_gc_ptr,
                                     cached_class_used_class)
-        if template_spelling == 'Df' and cursor.kind == CursorKind.CLASS_TEMPLATE:
+            is_template_class -= 1
+        if cursor_spelling == 'Df' and cursor.kind == CursorKind.CLASS_TEMPLATE:
+            print(f'Template Declaration is {dir(cursor)}')
+            is_template_class += 1
             for child in cursor.get_children():
-                print(f'child is {repr(child)}')
-                find_all_use_gc_ptr(child,
-                                    all_gc_ptrs,
-                                    class_inherited_from,
-                                    cached_class_used_gc_ptr,
-                                    cached_class_used_class)
+                child_type = child.type
+                child_cursor_type_spelling = child_type.spelling
+                child_cursor_spelling = child.spelling
+                child_kind_cursor = child.kind
+                print(f'Template Child is {str(child)}')
+                print(f'Template Child Dir is {dir(child)}')
+                if child_cursor_spelling == 't2t':
+                    print('Found t2t')
+            # for child in cursor.get_children():
+            #     print(f'child is {repr(child)}')
+            #     find_all_use_gc_ptr(child,
+            #                         all_gc_ptrs,
+            #                         class_inherited_from,
+            #                         cached_class_used_gc_ptr,
+            #                         cached_class_used_class)
+            is_template_class -= 1
         elif cursor.kind == CursorKind.NAMESPACE:
             for child in cursor.get_children():
                 find_all_use_gc_ptr(child,
@@ -252,6 +299,7 @@ if __name__ == '__main__':
             class_inherited_from = set()
             cached_class_used_gc_ptr = set()
             cached_class_used_class = dict()
+            # search_item_with(tu.cursor, 't2t')
             find_all_use_gc_ptr(tu.cursor, all_gc_ptrs, class_inherited_from, cached_class_used_gc_ptr, cached_class_used_class)
             cached_class_used_class_used_gc_ptr = dict()
             for cl in cached_class_used_gc_ptr:
