@@ -10,6 +10,17 @@
 #ifndef DETERMINISTIC_GARBAGE_COLLECTOR_POINTER_HPP
 #define DETERMINISTIC_GARBAGE_COLLECTOR_POINTER_HPP
 
+namespace memory {
+
+namespace synchronization {
+
+template <typename T>
+class has_use_gc_ptr;
+
+}
+
+}
+
 #include <atomic>
 #include <vector>
 #include <unordered_set>
@@ -66,6 +77,38 @@ struct gc_object_aligned_storage {
   TObject object_;
   gc_object_control_block control_block_;
 };
+
+template <typename TBase, typename TDerived>
+inline void call_ConnectBaseToRoot(TDerived * derivedPtr, const void * rootPtr) {
+  if constexpr (memory::has_use_gc_ptr<TBase>::value) {
+    derivedPtr->TBase::connectToRoot(rootPtr);
+  }
+}
+
+template <typename TExact, typename TDeduced>
+inline void call_ConnectFieldToRoot(TDeduced & t, const void * rootPtr) {
+  if constexpr (!std::is_pointer<TExact>::value &&
+                !std::is_reference<TExact>::value &&
+                memory::has_use_gc_ptr<TExact>::value) {
+    t.connectToRoot(rootPtr);
+  }
+}
+
+template <typename TBase, typename TDerived>
+inline void call_DisconnectBaseFromRoot(TDerived * derivedPtr, const bool isRoot, const void * rootPtr) {
+  if constexpr (memory::has_use_gc_ptr<TBase>::value) {
+    derivedPtr->TBase::disconnectFromRoot(isRoot, rootPtr);
+  }
+}
+
+template <typename TExact, typename TDeduced>
+inline void call_DisconnectFieldFromRoot(TDeduced & t, const bool isRoot, const void * rootPtr) {
+  if constexpr (!std::is_pointer<TExact>::value &&
+                !std::is_reference<TExact>::value &&
+                memory::has_use_gc_ptr<TExact>::value) {
+    t.disconnectFromRoot(isRoot, rootPtr);
+  }
+}
 
 template <typename TObject>
 class gc_ptr {

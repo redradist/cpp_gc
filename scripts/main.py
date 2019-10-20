@@ -196,15 +196,26 @@ def find_all_use_gc_ptr(cursor: clang.cindex.Cursor, all_gc_ptrs, class_inherite
         if cursor_spelling == 'Df' and cursor.kind == CursorKind.CLASS_TEMPLATE:
             print(f'Template Declaration is {dir(cursor)}')
             is_template_class += 1
-            for child in cursor.get_children():
-                child_type = child.type
-                child_cursor_type_spelling = child_type.spelling
-                child_cursor_spelling = child.spelling
-                child_kind_cursor = child.kind
-                print(f'Template Child is {str(child)}')
-                print(f'Template Child Dir is {dir(child)}')
-                if child_cursor_spelling == 't2t':
-                    print('Found t2t')
+            bases = get_base_classes(cursor)
+            for base in bases:
+                base_decl_type = base.type
+                base_decl_cursor_type_spelling = base_decl_type.spelling
+                base_decl_cursor_spelling = base.spelling
+                base_decl_kind_cursor = base.kind
+                print(f'base_decl_type is {base_decl_type}')
+                print(f'base_decl_cursor_type_spelling is {base_decl_cursor_type_spelling}')
+                print(f'base_decl_cursor_spelling is {base_decl_cursor_spelling}')
+                print(f'base_decl_kind_cursor is {base_decl_kind_cursor}')
+            field_decls = get_field_decls(cursor)
+            for field_decl in field_decls:
+                field_decl_type = field_decl.type
+                field_decl_cursor_type_spelling = field_decl_type.spelling
+                field_decl_cursor_spelling = field_decl.spelling
+                field_decl_kind_cursor = field_decl.kind
+                print(f'field_decl_type is {field_decl_type}')
+                print(f'field_decl_cursor_type_spelling is {field_decl_cursor_type_spelling}')
+                print(f'field_decl_cursor_spelling is {field_decl_cursor_spelling}')
+                print(f'field_decl_kind_cursor is {field_decl_kind_cursor}')
             # for child in cursor.get_children():
             #     print(f'child is {repr(child)}')
             #     find_all_use_gc_ptr(child,
@@ -257,10 +268,10 @@ def find_all_use_gc_ptr(cursor: clang.cindex.Cursor, all_gc_ptrs, class_inherite
 
 def get_base_classes(cursor):
     bases = []
-    if cursor.kind == CursorKind.CLASS_DECL:
-        for node in cursor.get_children():
-            if node.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
-                bases.append(node.referenced)
+    if hasattr(cursor, 'get_children'):
+        for child in cursor.get_children():
+            if child.kind == clang.cindex.CursorKind.CXX_BASE_SPECIFIER:
+                bases.append(child.referenced)
         if len(bases) > 0:
             print("Found bases:")
             for base in bases:
@@ -268,6 +279,22 @@ def get_base_classes(cursor):
     return bases
 
 
+def get_field_decls(cursor):
+    field_decls = []
+    if hasattr(cursor, 'get_children'):
+        for child in cursor.get_children():
+            if child.kind == clang.cindex.CursorKind.FIELD_DECL:
+                field_decls.append(child.referenced)
+        if len(field_decls) > 0:
+            print("Found field_decls:")
+            for field_decl in field_decls:
+                print(f"Base {field_decl.type.spelling}")
+    return field_decls
+
+
+# if constexpr (memory::has_use_gc_ptr<A>::value) {
+#   A::connectToRoot(rootPtr);
+# }
 # public:
 #  // GENERATED CODE FOR GC_PTR
 #  // BEGIN GC_PTR
