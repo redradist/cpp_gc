@@ -268,6 +268,27 @@ def get_base_classes(cursor):
     return bases
 
 
+# public:
+#  // GENERATED CODE FOR GC_PTR
+#  // BEGIN GC_PTR
+#  void connectToRoot(const void * rootPtr) const {
+#    if constexpr (!std::is_pointer<decltype(t2t)>::value &&
+#                  !std::is_reference<decltype(t2t)>::value &&
+#                  memory::has_use_gc_ptr<decltype(t2t)>::value) {
+#      t2t.connectToRoot(rootPtr);
+#    }
+#  }
+#
+#  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {
+#    if constexpr (!std::is_pointer<decltype(t2t)>::value &&
+#                  !std::is_reference<decltype(t2t)>::value &&
+#                  memory::has_use_gc_ptr<decltype(t2t)>::value) {
+#      t2t.disconnectFromRoot(isRoot, rootPtr);
+#    }
+#  }
+#  // END GC_PTR
+
+
 if __name__ == '__main__':
     # json_file = sys.argv[1]
     # print(json_file)
