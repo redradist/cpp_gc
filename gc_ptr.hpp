@@ -24,6 +24,7 @@ class has_use_gc_ptr;
 #include <atomic>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <mutex>
 #include <type_traits>
 #include <thread>

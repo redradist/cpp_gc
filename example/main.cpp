@@ -7,6 +7,7 @@
 #include <deque>
 #include <mutex>
 #include <algorithm>
+#include "some_lib.hpp"
 
 class A;
 
