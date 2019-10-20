@@ -4,6 +4,7 @@ import os
 import re
 import json
 import sys
+from pathlib import Path
 from typing import List, Set, Dict
 
 from clang.cindex import *
@@ -235,14 +236,16 @@ def get_field_decls(cursor):
     return field_decls
 
 
-def commonprefix(args, sep='/'):
-    return os.path.commonprefix(args).rpartition(sep)[0]
-
-
-def filter_class_for_file(classes, file_path):
+def filter_class_for_file(classes, base_path):
+    print(f'base_path {base_path}')
     filter_classes = []
     for cl in classes:
-        if str(cl.class_decl.location.file) == file_path:
+        file_path = os.path.abspath(str(cl.class_decl.location.file))
+        common_directory = os.path.commonpath([base_path, file_path])
+        print(f'file_path {file_path}')
+        print(f'common_directory {common_directory}')
+        if base_path in common_directory:
+            print(f'Filtered {file_path}')
             filter_classes.append(cl)
     return filter_classes
 
@@ -297,6 +300,13 @@ def substitute_generated_files(command, generated_file_per_real_file):
         if command[indx] in generated_file_per_real_file:
             command[indx] = generated_file_per_real_file[command[indx]]
         indx += 1
+    # for generated_file in generated_file_per_real_file.values():
+    #     print(f'generated_file is {generated_file}')
+    #     _, file_extension = os.path.splitext(generated_file)
+    #     print(f'file_extension is {file_extension}')
+    #     if file_extension == '.h' or file_extension == '.hpp':
+    #         command.insert(1, '-include')
+    #         command.insert(2, f'{generated_file}')
 
 
 if __name__ == '__main__':
@@ -332,7 +342,7 @@ if __name__ == '__main__':
     cached_class_used_gc_ptr = set()
     cached_class_used_class = dict()
     classes = get_all_classes(tu.cursor)
-    classes = filter_class_for_file(classes, '/home/redra/Projects/DeterministicGarbagePointer/example/main.cpp')
+    classes = filter_class_for_file(classes, str(Path(build_directory).parent))
     grouped_by_file_classes = group_by_file(classes)
 
     generated_file_per_real_file = dict()
@@ -349,80 +359,74 @@ if __name__ == '__main__':
             indx = 0
             line_iter = iter(sorted_lines)
             line = next(line_iter)
-            is_generated = False
             line_offset = dict()
             while indx < len(lines):
                 cur_line = lines[indx]
-                # if not is_generated and '// GENERATED CODE FOR GC_PTR' in cur_line:
-                #     is_generated = True
                 if line and line[2] == indx + 1:
                     column_offset = 0
                     if line[2] in line_offset:
                         column_offset = line_offset[line[2]]
-                    if is_generated:
-                        new_lines.append(cur_line)
-                    else:
-                        member_names = []
-                        classes_per_line = grouped_by_lines_classes[line]
-                        for cl in classes_per_line:
-                            bases = get_base_classes(cl.class_decl)
-                            fields = get_field_decls(cl.class_decl)
 
-                            connect_lines = []
-                            for base in bases:
-                                spelling = base.spelling
-                                record_type = re.search(r'(class)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)',
-                                                        spelling)
-                                if record_type:
-                                    spelling = record_type.group('type_name')
-                                connect_lines.append(f"    memory::call_ConnectBaseToRoot<{spelling}>(this, rootPtr);\n")
+                    member_names = []
+                    classes_per_line = grouped_by_lines_classes[line]
+                    for cl in classes_per_line:
+                        bases = get_base_classes(cl.class_decl)
+                        fields = get_field_decls(cl.class_decl)
 
-                            for field in fields:
-                                spelling = field.spelling
-                                connect_lines.append(f"    memory::call_ConnectFieldToRoot<decltype({spelling})>({spelling}, rootPtr);\n")
+                        connect_lines = []
+                        for base in bases:
+                            spelling = base.spelling
+                            record_type = re.search(r'(class)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)',
+                                                    spelling)
+                            if record_type:
+                                spelling = record_type.group('type_name')
+                            connect_lines.append(f"    memory::call_ConnectBaseToRoot<{spelling}>(this, rootPtr);\n")
+
+                        for field in fields:
+                            spelling = field.spelling
+                            connect_lines.append(f"    memory::call_ConnectFieldToRoot<decltype({spelling})>({spelling}, rootPtr);\n")
 
 
-                            disconnect_lines = []
-                            for base in bases:
-                                spelling = base.spelling
-                                record_type = re.search(r'(class)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)',
-                                                        spelling)
-                                if record_type:
-                                    spelling = record_type.group('type_name')
-                                disconnect_lines.append(f"    memory::call_DisconnectBaseFromRoot<{spelling}>(this, isRoot, rootPtr);\n")
+                        disconnect_lines = []
+                        for base in bases:
+                            spelling = base.spelling
+                            record_type = re.search(r'(class)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)',
+                                                    spelling)
+                            if record_type:
+                                spelling = record_type.group('type_name')
+                            disconnect_lines.append(f"    memory::call_DisconnectBaseFromRoot<{spelling}>(this, isRoot, rootPtr);\n")
 
-                            for field in fields:
-                                spelling = field.spelling
-                                disconnect_lines.append(f"    memory::call_DisconnectFieldFromRoot<decltype({spelling})>({spelling}, isRoot, rootPtr);\n")
+                        for field in fields:
+                            spelling = field.spelling
+                            disconnect_lines.append(f"    memory::call_DisconnectFieldFromRoot<decltype({spelling})>({spelling}, isRoot, rootPtr);\n")
 
-                            if len(connect_lines) > 0 or len(disconnect_lines) > 0:
+                        if len(connect_lines) > 0 or len(disconnect_lines) > 0:
+                            new_lines.append("\n")
+                            new_lines.append(" public:\n")
+                            new_lines.append("  // GENERATED CODE FOR GC_PTR\n")
+                            new_lines.append("  // BEGIN GC_PTR\n")
+                            if len(connect_lines) > 0:
+                                new_lines.append("  void connectToRoot(const void * rootPtr) const {\n")
+                                for connect_line in connect_lines:
+                                    new_lines.append(connect_line)
+                                new_lines.append("  }\n")
                                 new_lines.append("\n")
-                                new_lines.append(" public:\n")
-                                new_lines.append("  // GENERATED CODE FOR GC_PTR\n")
-                                new_lines.append("  // BEGIN GC_PTR\n")
-                                if len(connect_lines) > 0:
-                                    new_lines.append("  void connectToRoot(const void * rootPtr) const {\n")
-                                    for connect_line in connect_lines:
-                                        new_lines.append(connect_line)
-                                    new_lines.append("  }\n")
-                                    new_lines.append("\n")
-                                if len(disconnect_lines) > 0:
-                                    new_lines.append("  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {\n")
-                                    for disconnect_line in disconnect_lines:
-                                        new_lines.append(disconnect_line)
-                                    new_lines.append("  }\n")
-                                new_lines.append("  // END GC_PTR\n")
-                                new_lines.append(cur_line[line[3] - 2 - column_offset:])
-                                try:
-                                    line = next(line_iter)
-                                except:
-                                    line = None
-                    is_generated = False
+                            if len(disconnect_lines) > 0:
+                                new_lines.append("  void disconnectFromRoot(const bool isRoot, const void * rootPtr) const {\n")
+                                for disconnect_line in disconnect_lines:
+                                    new_lines.append(disconnect_line)
+                                new_lines.append("  }\n")
+                            new_lines.append("  // END GC_PTR\n")
+                            new_lines.append(cur_line[line[3] - 2 - column_offset:])
+                            try:
+                                line = next(line_iter)
+                            except:
+                                line = None
                 else:
                     new_lines.append(cur_line)
                 indx += 1
 
-        common_directory = commonprefix([build_directory, file])
+        common_directory = os.path.commonpath([build_directory, file])
         start_of_file_index = file.find(common_directory)
         second_part_of_file = file[start_of_file_index + len(common_directory):]
         generated_file = build_directory + second_part_of_file
