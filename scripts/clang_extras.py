@@ -242,8 +242,6 @@ def filter_class_for_file(classes, base_path):
     for cl in classes:
         file_path = os.path.abspath(str(cl.class_decl.location.file))
         common_directory = os.path.commonpath([base_path, file_path])
-        print(f'file_path {file_path}')
-        print(f'common_directory {common_directory}')
         if base_path in common_directory:
             print(f'Filtered {file_path}')
             filter_classes.append(cl)
@@ -279,6 +277,14 @@ def get_compile_file(args):
             return arg
 
 
+def get_include_paths(args):
+    include_paths = []
+    for arg in args:
+        if arg.startswith('-I'):
+            include_paths.append(os.path.abspath(arg[len('-I'):]))
+    return include_paths
+
+
 def adjust_args(args):
     new_args = [arg for arg in args if arg]
     idx = 0
@@ -309,6 +315,36 @@ def substitute_generated_files(command, generated_file_per_real_file):
     #         command.insert(2, f'{generated_file}')
 
 
+def is_header_file(file):
+    _, file_extension = os.path.splitext(file)
+    return file_extension == '.h' or file_extension == '.hpp'
+
+
+def get_common_path(include_paths):
+    common_paths = []
+    for path in include_paths:
+        cpath = os.path.commonpath([path, file])
+        if cpath:
+            common_paths.append(cpath)
+    return os.path.commonpath(common_paths)
+
+
+def get_sufixes(include_paths, common_path):
+    sufixes = []
+    for path in include_paths:
+        if path.startswith(common_path):
+            sufixes.append(path[len(common_path):])
+    longest_sufix = max(sufixes, key=len)
+    return sufixes, longest_sufix
+
+
+def generate_relative_includes(command, relative_path, sufixes):
+    indx = 1
+    for sufix in sufixes:
+        command.insert(indx, f'-I{relative_path+sufix}')
+        indx += 1
+
+
 if __name__ == '__main__':
     # json_file = sys.argv[1]
     print(f'sys.argv = {sys.argv}')
@@ -320,6 +356,8 @@ if __name__ == '__main__':
     build_directory = os.getcwd()
     args = command[1:]
     cpp_file = get_compile_file(args)
+    include_paths = get_include_paths(args)
+
     if cpp_file is None:
         print(f'command is {command}')
         exit(subprocess.call(command))
@@ -327,6 +365,7 @@ if __name__ == '__main__':
     print(f'build_directory is {build_directory}')
     print(f'args is {args}')
     print(f'cpp_file is {cpp_file}')
+    print(f'include_paths is {include_paths}')
 
     index = clang.cindex.Index.create()
 
@@ -429,8 +468,22 @@ if __name__ == '__main__':
         common_directory = os.path.commonpath([build_directory, file])
         start_of_file_index = file.find(common_directory)
         second_part_of_file = file[start_of_file_index + len(common_directory):]
-        generated_file = build_directory + second_part_of_file
+        prefix_gen_dir = '/generated_src'
+        if is_header_file(file):
+            common_path = get_common_path(include_paths)
+            print(f'common_path is {common_path}')
 
+            sufixes, longest_sufix = get_sufixes(include_paths, common_path)
+            print(f'longest_sufix is {longest_sufix}')
+
+            gen_dir = build_directory + prefix_gen_dir
+            generate_relative_includes(command, gen_dir, sufixes)
+
+            prefix_gen_dir += longest_sufix
+
+        generated_file = build_directory + prefix_gen_dir + second_part_of_file
+        if not os.path.exists(build_directory + prefix_gen_dir):
+            os.makedirs(build_directory + prefix_gen_dir)
         generated_file_per_real_file[file] = generated_file
         with open(generated_file, 'w') as f:
             f.writelines(new_lines)

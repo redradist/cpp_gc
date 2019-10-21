@@ -21,6 +21,10 @@ class CD {
     return "class CD";
   }
 
+  std::string getFile() {
+    return __FILE__;
+  }
+
   std::vector<int> array;
 };
 

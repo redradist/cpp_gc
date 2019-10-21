@@ -97,48 +97,20 @@ class CC : public A {
 
 
 int main() {
+  std::cout << "" << CD{}.getFile() << std::endl;
+
   // NOTE(redra): Test 0
-//  std::thread thr;
-//  {
-//    memory::gc_ptr<A> a0_ptr_{new A()};
-//    a0_ptr_->b_ptr_->c_ptr_->a1_ptr_ = a0_ptr_;
-//
-//    memory::gc_ptr<A> a_copy_ptr_{};
-//    a_copy_ptr_.create_object();
-//    a_copy_ptr_ = a0_ptr_;
-//
-//    thr = std::thread {[a0_ptr_]() {
-//      std::this_thread::sleep_for(std::chrono::seconds(2));
-//      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
-//    }};
-//    memory::gc_ptr<A> a1_ptr_{};
-//    a1_ptr_.create_object();
-//    a1_ptr_->b_ptr_ = a0_ptr_->b_ptr_;
-//    a1_ptr_->b_ptr_->c_ptr_->a0_ptr_  = a1_ptr_;
-//  }
-
-//  thr.join();
-
-  Df<A, A> ad;
-  ad.t2t;
-  // NOTE(redra): Test 1
   std::thread thr;
   {
     memory::gc_ptr<A> a0_ptr_{new A()};
     a0_ptr_->b_ptr_->c_ptr_->a1_ptr_ = a0_ptr_;
 
-    ad.t2t.b_ptr_ = a0_ptr_->b_ptr_;
     memory::gc_ptr<A> a_copy_ptr_{};
     a_copy_ptr_.create_object();
     a_copy_ptr_ = a0_ptr_;
 
-    asdasd::CC cc;
-    auto c0_ptr_ = a0_ptr_->b_ptr_->c_ptr_;
     thr = std::thread {[a0_ptr_]() {
       std::this_thread::sleep_for(std::chrono::seconds(2));
-      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
-      std::this_thread::sleep_for(std::chrono::seconds(2));
-      a0_ptr_->b_ptr_->c_ptr_ = new C();
       std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
     }};
     memory::gc_ptr<A> a1_ptr_{};
@@ -146,7 +118,37 @@ int main() {
     a1_ptr_->b_ptr_ = a0_ptr_->b_ptr_;
     a1_ptr_->b_ptr_->c_ptr_->a0_ptr_  = a1_ptr_;
   }
+
   thr.join();
+
+
+  // NOTE(redra): Test 1
+//  Df<A, A> ad;
+//  std::thread thr;
+//  {
+//    memory::gc_ptr<A> a0_ptr_{new A()};
+//    a0_ptr_->b_ptr_->c_ptr_->a1_ptr_ = a0_ptr_;
+//
+//    ad.t2t.b_ptr_ = a0_ptr_->b_ptr_;
+//    memory::gc_ptr<A> a_copy_ptr_{};
+//    a_copy_ptr_.create_object();
+//    a_copy_ptr_ = a0_ptr_;
+//
+//    asdasd::CC cc;
+//    auto c0_ptr_ = a0_ptr_->b_ptr_->c_ptr_;
+//    thr = std::thread {[a0_ptr_]() {
+//      std::this_thread::sleep_for(std::chrono::seconds(2));
+//      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
+//      std::this_thread::sleep_for(std::chrono::seconds(2));
+//      a0_ptr_->b_ptr_->c_ptr_ = new C();
+//      std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
+//    }};
+//    memory::gc_ptr<A> a1_ptr_{};
+//    a1_ptr_.create_object();
+//    a1_ptr_->b_ptr_ = a0_ptr_->b_ptr_;
+//    a1_ptr_->b_ptr_->c_ptr_->a0_ptr_  = a1_ptr_;
+//  }
+//  thr.join();
 
   // NOTE(redra): Test 2
 //  memory::gc_ptr<A> a0_ptr_{new A()};
