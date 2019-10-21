@@ -8,8 +8,6 @@ set(CMAKE_CXX_STANDARD 17)
 include_directories(.)
 include_directories(..)
 
-include(${CMAKE_CURRENT_LIST_DIR}/../scripts/gc_ptr_config.cmake)
-
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize-address-use-after-scope -fsanitize=leak")
 
 add_executable(NoMoreGarbadgeCollector main.cpp some_lib.hpp)

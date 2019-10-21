@@ -40,6 +40,8 @@ class C {
   memory::gc_ptr<A> a0_ptr_;
   memory::gc_ptr<A> a1_ptr_;
   std::vector<int> array;
+}; class Dfs {
+  A * a0;
 };
 
 class B {

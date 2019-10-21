@@ -4,13 +4,31 @@ import os
 import re
 import json
 import sys
+from decimal import Decimal
 from pathlib import Path
 from typing import List, Set, Dict
 
 from clang.cindex import *
 from ctypes.util import find_library
 
-Config.set_library_file('/usr/lib/llvm-7/lib/libclang.so.1')
+lib_path = '/usr/lib'
+llvm_lib_dir_regex = re.compile(r'llvm-(?P<ver>\d+([.]?\d+)?)')
+
+llvm_lib_vers = []
+for root, dirs, files in os.walk(lib_path):
+  for dir in dirs:
+    match = llvm_lib_dir_regex.match(dir)
+    if match:
+        llvm_lib_vers.append(Decimal(match.group('ver')))
+
+max_clang_ver = max(llvm_lib_vers)
+max_llvm_lib_ver = max(llvm_lib_ver for llvm_lib_ver in llvm_lib_vers if llvm_lib_ver < Decimal('8.0'))
+
+if max_llvm_lib_ver is None:
+    print('LLVM Toolchain with version less than 8 is not found, please install it from https://apt.llvm.org/ or using apt-get on Ubuntu !!',
+          file=sys.stderr)
+
+Config.set_library_file(f'/usr/lib/llvm-{max_llvm_lib_ver}/lib/libclang.so.1')
 
 import clang.cindex
 
@@ -162,35 +180,6 @@ class GCPtrMemberClassDecl:
                     self.parents[-1][1].extent.end.line,
                     self.parents[-1][1].extent.end.column)
 
-is_template_class = 0
-
-def search_item_with(cursor: clang.cindex.Cursor, name):
-    type = cursor.type
-    cursor_type_spelling = type.spelling
-    cursor_spelling = cursor.spelling
-    if cursor_spelling == name:
-        print(f'Found {name} item, repr(type): {repr(type)}')
-        print(f'Found {name} item, cursor_type_spelling: {cursor_type_spelling}')
-        print(f'Found {name} item, cursor_spelling: {cursor_spelling}')
-        print(f'Found {name} item, repr(cursor): {repr(cursor)}')
-        print(f'Found {name} item, str(cursor): {str(cursor)}')
-        print(f'Found {name} item, dir(cursor): {dir(cursor)}')
-        return True
-    elif hasattr(cursor, 'get_children'):
-        for child in cursor.get_children():
-            is_found = search_item_with(child, name)
-            if is_found:
-                print('>>>>>>>>>>>>>>>>')
-                print(f'Found in {name} item, repr(type): {repr(type)}')
-                print(f'Found in {name} item, cursor_type_spelling: {cursor_type_spelling}')
-                print(f'Found in {name} item, cursor_spelling: {cursor_spelling}')
-                print(f'Found in {name} item, repr(cursor): {repr(cursor)}')
-                print(f'Found in {name} item, str(cursor): {str(cursor)}')
-                print(f'Found in {name} item, dir(cursor): {dir(cursor)}')
-                print('<<<<<<<<<<<<<<<<')
-                return True
-    return False
-
 
 def get_all_classes(cursor: clang.cindex.Cursor):
     """
@@ -201,8 +190,6 @@ def get_all_classes(cursor: clang.cindex.Cursor):
     found_classes = set()
 
     if cursor.kind == CursorKind.CLASS_DECL or cursor.kind == CursorKind.CLASS_TEMPLATE:
-        if cursor.spelling == 'A':
-            print('Found class A')
         class_decl = ClassDecl(cursor)
         if class_decl in found_classes:
             found_classes.remove(class_decl)
@@ -237,13 +224,11 @@ def get_field_decls(cursor):
 
 
 def filter_class_for_file(classes, base_path):
-    print(f'base_path {base_path}')
     filter_classes = []
     for cl in classes:
         file_path = os.path.abspath(str(cl.class_decl.location.file))
         common_directory = os.path.commonpath([base_path, file_path])
         if base_path in common_directory:
-            print(f'Filtered {file_path}')
             filter_classes.append(cl)
     return filter_classes
 
@@ -350,7 +335,7 @@ if __name__ == '__main__':
     print(f'sys.argv = {sys.argv}')
     import subprocess
 
-    command = ["clang++-9"]
+    command = [f"clang++-{max_clang_ver}"]
     command.extend(sys.argv[1:])
 
     build_directory = os.getcwd()
@@ -375,7 +360,6 @@ if __name__ == '__main__':
     tu = index.parse(cpp_file,
                      args=args,
                      options=0)
-    print('Translation unit: {}'.format(tu.spelling))
     all_gc_ptrs = set()
     class_inherited_from = set()
     cached_class_used_gc_ptr = set()
@@ -386,12 +370,9 @@ if __name__ == '__main__':
 
     generated_file_per_real_file = dict()
     for file, classes_per_file in grouped_by_file_classes.items():
-        print(f'file={file}')
-        print(f'len(classes)={len(classes)}')
         gc_ptr_locations_pre_class = dict()
         grouped_by_lines_classes = group_by_lines(classes_per_file)
         sorted_lines = list(sorted(grouped_by_lines_classes.keys(), key=lambda x: x[2]))
-        print(f'sorted_lines is {sorted_lines}')
         new_lines = []
         with open(file, 'r') as f:
             lines = f.readlines()
@@ -471,14 +452,9 @@ if __name__ == '__main__':
         prefix_gen_dir = '/generated_src'
         if is_header_file(file):
             common_path = get_common_path(include_paths)
-            print(f'common_path is {common_path}')
-
             sufixes, longest_sufix = get_sufixes(include_paths, common_path)
-            print(f'longest_sufix is {longest_sufix}')
-
             gen_dir = build_directory + prefix_gen_dir
             generate_relative_includes(command, gen_dir, sufixes)
-
             prefix_gen_dir += longest_sufix
 
         generated_file = build_directory + prefix_gen_dir + second_part_of_file
