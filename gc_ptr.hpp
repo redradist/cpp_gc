@@ -113,6 +113,9 @@ inline void call_DisconnectFieldFromRoot(TDeduced & t, const bool isRoot, const 
 
 template <typename TObject>
 class gc_ptr {
+  static_assert(!std::is_pointer<TObject>::value, "TObject should not be pointer type !!");
+  static_assert(!std::is_reference<TObject>::value, "TObject should not be reference type !!");
+
  public:
   gc_ptr()
     : root_ptrs_{this} {
