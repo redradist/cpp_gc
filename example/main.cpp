@@ -12,12 +12,12 @@
 class A;
 
 template <typename T, typename Base>
-class Df : public Base {
+class Derived : public Base {
  public:
-  T t2t;
+  T t;
 };
 
-class DD {
+class ClassWithMemberPointer {
  public:
   A *a0;
 };
@@ -40,7 +40,7 @@ class C {
   memory::gc_ptr<A> a0_ptr_;
   memory::gc_ptr<A> a1_ptr_;
   std::vector<int> array;
-}; class Dfs {
+}; class SomeStrangeClass {
   A * a0;
 };
 
@@ -84,13 +84,13 @@ class A {
 
 class D {
  public:
-  Df<A, A> fd;
+  Derived<A, A> der0_;
   const A a0;
   A const *a1;
 };
 
-namespace asdasd {
-class CC : public A {
+namespace strange_namespace {
+class StrangeClass : public A {
 
  private:
   memory::gc_ptr<B> b_ptr_;
