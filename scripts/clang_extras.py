@@ -244,17 +244,20 @@ def get_field_decls(cursor):
     return field_decls
 
 
-def filter_class_for_file(classes, base_path):
-    filter_classes = []
+def filter_files(classes, base_path):
+    project_files = []
+    external_files = []
     for cl in classes:
         file_path = os.path.abspath(str(cl.class_decl.location.file))
         common_directory = os.path.commonpath([base_path, file_path])
         if base_path in common_directory:
-            filter_classes.append(cl)
-    return filter_classes
+            project_files.append(file_path)
+        else:
+            external_files.append(file_path)
+    return project_files, external_files
 
 
-def group_by_file(classes: List[ClassDecl]):
+def group_by_file(classes):
     group_classes: Dict = dict()
     for cl in classes:
         file_path = str(cl.class_decl.location.file)
@@ -312,13 +315,6 @@ def substitute_generated_files(command, generated_file_per_real_file):
         if command[indx] in generated_file_per_real_file:
             command[indx] = generated_file_per_real_file[command[indx]]
         indx += 1
-    # for generated_file in generated_file_per_real_file.values():
-    #     print(f'generated_file is {generated_file}')
-    #     _, file_extension = os.path.splitext(generated_file)
-    #     print(f'file_extension is {file_extension}')
-    #     if file_extension == '.h' or file_extension == '.hpp':
-    #         command.insert(1, '-include')
-    #         command.insert(2, f'{generated_file}')
 
 
 def is_header_file(file):
@@ -387,7 +383,7 @@ if __name__ == '__main__':
     cached_class_used_class = dict()
     classes = get_all_classes(tu.cursor)
     validate_all_lambdas(tu.cursor)
-    classes = filter_class_for_file(classes, str(Path(build_directory).parent))
+    project_files, external_files = filter_files(classes, str(Path(build_directory).parent))
     grouped_by_file_classes = group_by_file(classes)
 
     generated_file_per_real_file = dict()
@@ -468,18 +464,23 @@ if __name__ == '__main__':
                     new_lines.append(cur_line)
                 indx += 1
 
-        common_directory = os.path.commonpath([build_directory, file])
-        start_of_file_index = file.find(common_directory)
-        second_part_of_file = file[start_of_file_index + len(common_directory):]
-        prefix_gen_dir = '/generated_src'
-        if is_header_file(file):
-            common_path = get_common_path(include_paths)
-            sufixes, longest_sufix = get_sufixes(include_paths, common_path)
-            gen_dir = build_directory + prefix_gen_dir
-            generate_relative_includes(command, gen_dir, sufixes)
-            prefix_gen_dir += longest_sufix
+        abs_file_path = os.path.abspath(file)
+        if abs_file_path in project_files:
+            prefix_gen_dir = '/generated_internal_src'
+            common_directory = os.path.commonpath([build_directory, abs_file_path])
+            start_of_file_index = abs_file_path.find(common_directory)
+            second_part_of_file = abs_file_path[start_of_file_index + len(common_directory):]
+            if is_header_file(abs_file_path):
+                common_path = get_common_path(include_paths)
+                sufixes, longest_sufix = get_sufixes(include_paths, common_path)
+                gen_dir = build_directory + prefix_gen_dir
+                generate_relative_includes(command, gen_dir, sufixes)
+                prefix_gen_dir += longest_sufix
+            generated_file = build_directory + prefix_gen_dir + second_part_of_file
+        else:
+            prefix_gen_dir = '/generated_external_src/'
+            generated_file = build_directory + prefix_gen_dir + Path(abs_file_path).name
 
-        generated_file = build_directory + prefix_gen_dir + second_part_of_file
         if not os.path.exists(build_directory + prefix_gen_dir):
             os.makedirs(build_directory + prefix_gen_dir)
         generated_file_per_real_file[file] = generated_file
