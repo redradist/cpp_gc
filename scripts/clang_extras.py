@@ -219,9 +219,8 @@ def validate_all_lambdas(cursor: clang.cindex.Cursor):
         for child in cursor.get_children():
             if (cursor.kind == CursorKind.LAMBDA_EXPR) and ('memory::gc_ptr' in child.type.spelling):
                 if not hasattr(validate_all_lambdas, 'parent_thread_call') or not validate_all_lambdas.parent_thread_call:
-                    print(f"{esc('31;1;4')}error:{esc(0)} memory::gc_ptr in lambda could be used only in std::thread constructor context !!", file=sys.stderr)
+                    print(f"{esc('31;1;4')}error:{esc(0)} memory::gc_ptr in lambda could be used only in std::thread constructor context(file={cursor.location.file.name}:{cursor.location.line}, column={cursor.location.column})", file=sys.stderr)
                     exit(1)
-                    # raise Exception("error: memory::gc_ptr in lambda could be used only in std::thread constructor context !!")
             validate_all_lambdas(child)
         if cursor.kind == CursorKind.CALL_EXPR and 'std::thread' in cursor.type.spelling:
             validate_all_lambdas.parent_thread_call = False
