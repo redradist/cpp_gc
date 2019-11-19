@@ -12,7 +12,7 @@
 
 namespace memory {
 
-namespace synchronization {
+namespace sync {
 
 template <typename T>
 class has_use_gc_ptr;
@@ -31,7 +31,7 @@ class has_use_gc_ptr;
 
 namespace memory {
 
-namespace synchronization {
+namespace sync {
 
 class SpinLock {
  public:
@@ -221,7 +221,7 @@ class gc_ptr {
     if (object_control_block_ptr_ != nullptr) {
       bool isNewRoot;
       {
-        synchronization::SpinLock lock{object_control_block_ptr_->lock_object_};
+        sync::SpinLock lock{object_control_block_ptr_->lock_object_};
         isNewRoot = object_control_block_ptr_->root_ptrs_.count(rootPtr) == 0;
         if (isNewRoot) {
           object_control_block_ptr_->root_ptrs_[rootPtr] = 1;
@@ -242,7 +242,7 @@ class gc_ptr {
       bool isRemovedRoot = false;
       bool isNoRoots;
       {
-        synchronization::SpinLock lock{object_control_block_ptr_->lock_object_};
+        sync::SpinLock lock{object_control_block_ptr_->lock_object_};
         if (isRoot) {
           if (object_control_block_ptr_->root_ptrs_.count(rootPtr) > 0) {
             object_control_block_ptr_->root_ptrs_.erase(rootPtr);

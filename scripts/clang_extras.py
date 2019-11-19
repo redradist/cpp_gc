@@ -204,6 +204,28 @@ def get_all_classes(cursor: clang.cindex.Cursor):
 
     return found_classes
 
+def esc(code):
+    return f'\033[{code}m'
+
+def validate_all_lambdas(cursor: clang.cindex.Cursor):
+    """
+        Find all references to the type named 'typename'
+        :param cursor: clang.cindex.Cursor
+        :return: None
+        """
+    if hasattr(cursor, 'get_children'):
+        if cursor.kind == CursorKind.CALL_EXPR and 'std::thread' in cursor.type.spelling:
+            validate_all_lambdas.parent_thread_call = True
+        for child in cursor.get_children():
+            if (cursor.kind == CursorKind.LAMBDA_EXPR) and ('memory::gc_ptr' in child.type.spelling):
+                if not hasattr(validate_all_lambdas, 'parent_thread_call') or not validate_all_lambdas.parent_thread_call:
+                    print(f"{esc('31;1;4')}error:{esc(0)} memory::gc_ptr in lambda could be used only in std::thread constructor context !!", file=sys.stderr)
+                    exit(1)
+                    # raise Exception("error: memory::gc_ptr in lambda could be used only in std::thread constructor context !!")
+            validate_all_lambdas(child)
+        if cursor.kind == CursorKind.CALL_EXPR and 'std::thread' in cursor.type.spelling:
+            validate_all_lambdas.parent_thread_call = False
+
 
 def get_base_classes(cursor):
     bases = []
@@ -365,6 +387,7 @@ if __name__ == '__main__':
     cached_class_used_gc_ptr = set()
     cached_class_used_class = dict()
     classes = get_all_classes(tu.cursor)
+    validate_all_lambdas(tu.cursor)
     classes = filter_class_for_file(classes, str(Path(build_directory).parent))
     grouped_by_file_classes = group_by_file(classes)
 
