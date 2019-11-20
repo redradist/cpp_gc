@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-set(CMAKE_CXX_COMPILER /home/redra/Projects/DeterministicGarbagePointer/scripts/clang_extras.py)
+set(CMAKE_CXX_COMPILER ${CMAKE_CURRENT_LIST_DIR}/../scripts/clang_extras.py)
 project(NoMoreGarbadgeCollector)
 
 set(CMAKE_CXX_STANDARD 17)
