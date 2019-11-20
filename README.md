@@ -139,7 +139,18 @@ int main() {
 
 This code is easier that you should not track possible cyclic dependecies by eyes and still you will get deterministic behaviour
 
+## Advantages
+
+This feature conforms with zero-overhead principle !! You do not pay if you do not use it and pay if you use it ...
+
+## Known issues
+
+For simplicity my code generation tool does not conforms with this principle, but optimizer will eliminate all unused code that was generated
+Also simplicity gc_ptr could be passed only in lambda expression that is used for std::thread construction
+It also currently does not work with STL, but it will soon ...
+
 ## How to use it
+
 On Ubuntu:
 ```console
 sudo apt-get install libclang
