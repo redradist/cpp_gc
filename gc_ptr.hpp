@@ -154,17 +154,8 @@ class gc_ptr {
     removeAllRoots();
   }
 
-  template <typename ... TArgs>
-  void create_object(TArgs && ... args) {
-    removeAllRoots();
-    auto gcObjectAlignedStoragePtr = new gc_object_aligned_storage<TObject>{
-        {std::forward<TObject>(args)...},
-        {true, ATOMIC_FLAG_INIT, {}}
-    };
-    object_ptr_ = &gcObjectAlignedStoragePtr->object_;
-    object_control_block_ptr_ = &gcObjectAlignedStoragePtr->control_block_;
-    addAllRoots();
-  }
+  template <typename T, typename ... TArgs>
+  friend gc_ptr<T> make_gc(TArgs && ... args);
 
   explicit operator bool() const noexcept {
     return object_ptr_ != nullptr;
@@ -299,6 +290,19 @@ class gc_ptr {
   mutable TObject * object_ptr_ = nullptr;
   mutable gc_object_control_block * object_control_block_ptr_ = nullptr;
 };
+
+template <typename TObject, typename ... TArgs>
+gc_ptr<TObject> make_gc(TArgs && ... args) {
+  gc_ptr<TObject> ptr{};
+  ptr.removeAllRoots();
+  auto gcObjectAlignedStoragePtr = new gc_object_aligned_storage<TObject>{
+      {std::forward<TObject>(args)...},
+      {true, ATOMIC_FLAG_INIT, {}}
+  };
+  ptr.object_ptr_ = &gcObjectAlignedStoragePtr->object_;
+  ptr.object_control_block_ptr_ = &gcObjectAlignedStoragePtr->control_block_;
+  ptr.addAllRoots();
+}
 
 }
 

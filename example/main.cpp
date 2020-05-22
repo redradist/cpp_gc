@@ -1,4 +1,3 @@
-#include <gc_ptr.hpp>
 #include <iostream>
 #include <atomic>
 #include <vector>
@@ -57,7 +56,7 @@ class GC_TRACE B {
   B() {
     std::cout << "B()" << std::endl;
     c_ptr_ = memory::gc_ptr<C>{new C()};
-    c_ptr_.create_object();
+    c_ptr_ = memory::make_gc<C>();
   }
 
   ~B() {
@@ -76,7 +75,7 @@ class GC_TRACE A {
  public:
   A() {
     std::cout << "A()" << std::endl;
-    b_ptr_.create_object();
+    b_ptr_ = memory::make_gc<B>();
   }
 
   ~A() {
@@ -117,7 +116,7 @@ int main() {
     a0_ptr_->b_ptr_->c_ptr_->a1_ptr_ = a0_ptr_;
 
     memory::gc_ptr<A> a_copy_ptr_{};
-    a_copy_ptr_.create_object();
+    a_copy_ptr_ = memory::make_gc<A>();
     a_copy_ptr_ = a0_ptr_;
 
     thr = std::thread {[a0_ptr_]() {
@@ -125,7 +124,7 @@ int main() {
       std::cout << "Object name is " << a0_ptr_->getName() << std::endl;
     }};
     memory::gc_ptr<A> a1_ptr_{};
-    a1_ptr_.create_object();
+    a1_ptr_ = memory::make_gc<A>();
     a1_ptr_->b_ptr_ = a0_ptr_->b_ptr_;
     a1_ptr_->b_ptr_->c_ptr_->a0_ptr_  = a1_ptr_;
   }
