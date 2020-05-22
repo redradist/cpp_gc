@@ -14,20 +14,32 @@ namespace memory {
 
 namespace sync {
 
+#define GC_TRACE __attribute__((annotate("gc::Trace")))
+
 template <typename T>
 class has_use_gc_ptr;
 
 }
 
+template <typename TBase, typename TDerived>
+void call_ConnectBaseToRoot(TDerived * derivedPtr, const void * rootPtr);
+
+template <typename TExact, typename TDeduced>
+void call_ConnectFieldToRoot(TDeduced & t, const void * rootPtr);
+
+template <typename TBase, typename TDerived>
+void call_DisconnectBaseFromRoot(TDerived * derivedPtr, const bool isRoot, const void * rootPtr);
+
+template <typename TExact, typename TDeduced>
+void call_DisconnectFieldFromRoot(TDeduced & t, const bool isRoot, const void * rootPtr);
+
 }
 
 #include <atomic>
-#include <vector>
 #include <unordered_set>
 #include <unordered_map>
 #include <mutex>
 #include <type_traits>
-#include <thread>
 
 namespace memory {
 
@@ -119,10 +131,12 @@ class gc_ptr {
  public:
   gc_ptr()
     : root_ptrs_{this} {
+    static_assert(has_use_gc_ptr<TObject>::value, "TObject should not be marked with GC_TRACE annotation !!");
   }
 
   explicit gc_ptr(TObject * objectPtr)
     : root_ptrs_{this} {
+    static_assert(has_use_gc_ptr<TObject>::value, "TObject should not be marked with GC_TRACE annotation !!");
     object_ptr_ = objectPtr;
     object_control_block_ptr_ = new gc_object_control_block{};
     for (auto & rootRefPtr : this->root_ptrs_) {
@@ -132,6 +146,7 @@ class gc_ptr {
 
   gc_ptr(const gc_ptr & gcPtr)
     : root_ptrs_{this} {
+    static_assert(has_use_gc_ptr<TObject>::value, "TObject should not be marked with GC_TRACE annotation !!");
     this->operator=(gcPtr);
   }
 

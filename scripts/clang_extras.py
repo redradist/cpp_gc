@@ -22,7 +22,9 @@ for root, dirs, files in os.walk(lib_path):
         llvm_lib_vers.append(Decimal(match.group('ver')))
 
 max_clang_ver = max(llvm_lib_vers)
+print(f'llvm_lib_vers is {llvm_lib_vers}')
 max_llvm_lib_ver = max(llvm_lib_ver for llvm_lib_ver in llvm_lib_vers if llvm_lib_ver < Decimal('8.0'))
+print(f'max_llvm_lib_ver is {max_llvm_lib_ver}')
 
 if max_llvm_lib_ver is None:
     print('LLVM Toolchain with version less than 8 is not found, please install it from https://apt.llvm.org/ or using apt-get on Ubuntu !!',
@@ -181,6 +183,12 @@ class GCPtrMemberClassDecl:
                     self.parents[-1][1].extent.end.column)
 
 
+def is_gc_trace_annotation(cursor: clang.cindex.Cursor):
+    for child in cursor.get_children():
+        if child.kind == CursorKind.ANNOTATE_ATTR and child.spelling == 'gc::Trace':
+            return True
+    return False
+
 def get_all_classes(cursor: clang.cindex.Cursor):
     """
     Find all references to the type named 'typename'
@@ -188,8 +196,7 @@ def get_all_classes(cursor: clang.cindex.Cursor):
     :return: None
     """
     found_classes = set()
-
-    if cursor.kind == CursorKind.CLASS_DECL or cursor.kind == CursorKind.CLASS_TEMPLATE:
+    if (cursor.kind == CursorKind.CLASS_DECL or cursor.kind == CursorKind.CLASS_TEMPLATE) and cursor.is_definition() and is_gc_trace_annotation(cursor):
         class_decl = ClassDecl(cursor)
         if class_decl in found_classes:
             found_classes.remove(class_decl)
@@ -408,13 +415,15 @@ if __name__ == '__main__':
                     member_names = []
                     classes_per_line = grouped_by_lines_classes[line]
                     for cl in classes_per_line:
+                        if cur_line[cl.lines[3]-2] != '}':
+                            continue
                         bases = get_base_classes(cl.class_decl)
                         fields = get_field_decls(cl.class_decl)
 
                         connect_lines = []
                         for base in bases:
                             spelling = base.spelling
-                            record_type = re.search(r'(class)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)',
+                            record_type = re.search(r'(class|struct)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)',
                                                     spelling)
                             if record_type:
                                 spelling = record_type.group('type_name')
@@ -424,11 +433,10 @@ if __name__ == '__main__':
                             spelling = field.spelling
                             connect_lines.append(f"    memory::call_ConnectFieldToRoot<decltype({spelling})>({spelling}, rootPtr);\n")
 
-
                         disconnect_lines = []
                         for base in bases:
                             spelling = base.spelling
-                            record_type = re.search(r'(class)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)',
+                            record_type = re.search(r'(class|struct)?\s?(?P<type_name>[_A-Za-z][_A-Za-z0-9]*)',
                                                     spelling)
                             if record_type:
                                 spelling = record_type.group('type_name')
@@ -466,7 +474,7 @@ if __name__ == '__main__':
 
         abs_file_path = os.path.abspath(file)
         if abs_file_path in project_files:
-            prefix_gen_dir = '/generated_internal_src'
+            prefix_gen_dir = '/generated/internal_src'
             common_directory = os.path.commonpath([build_directory, abs_file_path])
             start_of_file_index = abs_file_path.find(common_directory)
             second_part_of_file = abs_file_path[start_of_file_index + len(common_directory):]
@@ -478,8 +486,11 @@ if __name__ == '__main__':
                 prefix_gen_dir += longest_sufix
             generated_file = build_directory + prefix_gen_dir + second_part_of_file
         else:
-            prefix_gen_dir = '/generated_external_src/'
-            generated_file = build_directory + prefix_gen_dir + Path(abs_file_path).name
+            header_file_name = Path(abs_file_path).name
+            prefix_gen_dir = '/generated/external_include/bits/'
+            generated_file = build_directory + prefix_gen_dir + header_file_name
+            if header_file_name == 'gc_ptr.hpp':
+                continue
 
         if not os.path.exists(build_directory + prefix_gen_dir):
             os.makedirs(build_directory + prefix_gen_dir)
@@ -487,6 +498,7 @@ if __name__ == '__main__':
         with open(generated_file, 'w') as f:
             f.writelines(new_lines)
 
+    command.insert(1, f'-I{build_directory}/generated/external_include/')
     substitute_generated_files(command, generated_file_per_real_file)
     print(f'command is {command}')
     exit(subprocess.call(command))

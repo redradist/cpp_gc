@@ -7,7 +7,14 @@
 #include <deque>
 #include <mutex>
 #include <algorithm>
+#include <thread>
 #include "some_lib.hpp"
+
+//[[gc::Trace]]
+class GC_TRACE ASDsdasfasd {
+ public:
+  int k;
+};
 
 class A;
 
@@ -15,14 +22,15 @@ template <typename T, typename Base>
 class Derived : public Base {
  public:
   T t;
-};
+}
+     ;
 
 class ClassWithMemberPointer {
  public:
   A *a0;
 };
 
-class C {
+class GC_TRACE C {
  public:
   C() {
     std::cout << "C()" << std::endl;
@@ -44,7 +52,7 @@ class C {
   A * a0;
 };
 
-class B {
+class GC_TRACE B {
  public:
   B() {
     std::cout << "B()" << std::endl;
@@ -64,7 +72,7 @@ class B {
   std::vector<int> array;
 };
 
-class A {
+class GC_TRACE A {
  public:
   A() {
     std::cout << "A()" << std::endl;
@@ -97,8 +105,9 @@ class StrangeClass : public A {
 };
 }
 
-
 int main() {
+//  memory::gc_ptr<std::vector<uint8_t>> dsasdsafsd{new std::vector<uint8_t>()};
+//
   std::cout << "" << CD{}.getFile() << std::endl;
 
   // NOTE(redra): Test 0
